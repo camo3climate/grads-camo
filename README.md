@@ -3,6 +3,9 @@
 This is an unofficial downstream build and packaging project for GrADS 2.2.1,
 maintained for CAMO/climate research use.
 
+Version: v2.2.1-camo26.0
+Based on: GrADS 2.2.1
+
 The complete project history, technical decisions, and cross-distribution
 roadmap are in [PROJECT-SUMMARY.md](docs/PROJECT-SUMMARY.md).
 
@@ -25,12 +28,7 @@ Prebuilt RPMs are available from the GitHub Releases page:
 
 https://github.com/camo3climate/grads-camo/releases/tag/v2.2.1-camo26.0
 
-## EL8 test status
-
-The packaging baseline was built successfully on AlmaLinux 8.10 x86_64. The
-resulting RPM was installed on an operational server, where startup,
-`q config`, X11 display, and `clear` were checked successfully. Rebuilds must
-repeat these checks before release.
+`grads-2.2.1-1.camo26.0.el8.x86_64.rpm`
 
 ## Install on EL8
 
@@ -53,6 +51,13 @@ grads -blc "quit"
 At the interactive prompt, `help` shows the basic command summary and
 `help camo` shows the downstream themes, palettes, panels, font selection,
 and export commands.
+
+## EL8 test status
+
+The packaging baseline was built successfully on AlmaLinux 8.10 x86_64. The
+resulting RPM was installed on an operational server, where startup,
+`q config`, X11 display, and `clear` were checked successfully. Rebuilds must
+repeat these checks before release.
 
 ## Changes from upstream
 
