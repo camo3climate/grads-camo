@@ -34,7 +34,7 @@ https://github.com/camo3climate/grads-camo/releases/tag/v2.2.1-camo26.0
 
 A tentative AlmaLinux/RHEL 9 RPM build is temporarily available here:
 
-- [DROPBOX_LINK](https://www.dropbox.com/scl/fi/jjyr7rgis9ql493jt35dj/grads-2.2.1-1.camo26.0.el9.x86_64.rpm?rlkey=1bqb6qe6eed5ocpzycty5d4bj&dl=0)
+- `grads-2.2.1-1.camo26.0.el8.x86_64.rpm`  [DROPBOX_LINK](https://www.dropbox.com/scl/fi/jjyr7rgis9ql493jt35dj/grads-2.2.1-1.camo26.0.el9.x86_64.rpm?rlkey=1bqb6qe6eed5ocpzycty5d4bj&dl=0)
 
 This EL9 RPM is provided for testing only. It is not part of the tagged
 GitHub release assets yet. Documentation and release packaging will be updated
