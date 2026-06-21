@@ -1,0 +1,21 @@
+Description: provide gxdXflush stub for Cairo print backend
+Author: Arch AUR grads packaging, adapted by Codex packaging helper
+Forwarded: no
+
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -37,7 +37,7 @@ if USEGUI
+ endif
+ 
+ if USECAIRO
+-libgxpCairo_la_SOURCES = gxprint.c gxC.c
++libgxpCairo_la_SOURCES = gxprint.c gxC.c aflush.c
+ libgxdCairo_la_SOURCES = gxX.c gxC.c
+ endif
+ 
+--- /dev/null
++++ b/src/aflush.c
+@@ -0,0 +1,3 @@
++/* gxprint.c can reference the display flush hook even for print-only Cairo. */
++void gxdXflush(void) {
++}

@@ -1,0 +1,20 @@
+# Build-input checksums. Release-asset checksums are generated separately.
+18345c67dcdb20c8446127b5dccc439c7767172c6b3fde8277ccba5b54253807  SOURCES/cairo.m4
+fe63a3bd34111f58a8284191e6a64b2f2159210bae49daf3918b4dc1edeb4177  SOURCES/grads-2.2.1-cairo-aflush.patch
+885388112799846158629944e5561e3bc7c299b8927dcc7bae1606e86a793d44  SOURCES/grads-2.2.1-disable-gadap-macro.patch
+748ca4c980b93c5d7e2184b15fc509a7869e623961d085ba38f055b0bb3381c7  SOURCES/grads-2.2.1-fhs-paths.patch
+39919c53ed8d175d9ed189ea7ee6e2fa9332029add6ca79e6e2fb3bb1453f192  SOURCES/grads-2.2.1-format-security.patch
+d625f051c96ed7fb8b2d4cb2e8cdf4cba180732f4a549a13f028319898823830  SOURCES/grads-2.2.1-g2c.patch
+7568be38ea8b7746feec9bc9aa0a2ab908463d0a037d5bf6ef31c26092c9ed7e  SOURCES/grads-2.2.1-gcc14.patch
+99b9920441f1f1179568790eaf07d99d5ff402fde5a04b498ca5bd9933c88b41  SOURCES/grads-2.2.1-gcc15.patch
+0fe5c6d303d5aacaa8e9dd98a8bec802be2d7efb0ca13de9992c77f09a8c4971  SOURCES/grads-2.2.1-png16.patch
+f2000743eb45c89af1e71b202e2c5e5441c9bb9a65fb77482966e43e31969096  SOURCES/grads-2.2.1-remove-jpeg.patch
+695e2066d7d131720d598bac0beb61ac3ae5578240a5437401dc0ffbbe516206  SOURCES/grads-2.2.1-src.tar.gz
+3d0cc9ef4334813076cade6bf4eccd9ffa943842fcf087f313f5d9ebd1fd7cd9  SOURCES/grads-2.2.1-system-supplibs.patch
+31c83a78ebe295d5806e45d38d91c4e4d6fc208e3f3d920c6be17f617fefbd68  SOURCES/grads-2.2.1-themes-rgbmap.patch
+9d918b6e860385f0c2696f4330e3e2eb2abbf31d21dcb65df95f0caa46082d5f  SOURCES/grads-2.2.1-timeunits-parse.patch
+06605ed168f5eb1db67dc8470da2a3155f6163e7b9c840316c779482063dbf7e  SOURCES/grads-2.2.1-udunits2-m4.patch
+cfbb8c5120f493679a449b69b0d1b151a71aff1d164d80b5fbc73d911d1f3cdb  SOURCES/grads-2.2.1-udunits2.patch
+7f8856c71c2e4240e46fc6fac0065f0b3582031da859cdbaa5ac218749b44f82  SOURCES/grads-2.2.1-without-dap.patch
+0028737c97ef790bba3310fdb5935f6790538b51f4f2ebf3e671981391b6052b  SOURCES/libshp.m4
+b5b7d2f3bce42c51e745054b5fada043e15d63962f90624437ce3c49886a1b53  SOURCES/udpt.in

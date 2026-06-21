@@ -1,0 +1,597 @@
+--- grads-2.2.1.orig/src/gx.h
++++ grads-2.2.1/src/gx.h
+@@ -427,6 +427,7 @@
+ gaint gxdbqhersh (void);
+ void gxdbsethersh (gaint);
+ void gxdbsetfn (gaint, char *);
++void gxdbsetfontfamily (char *);
+ void gxdbsetpatt (gaint *, char *);
+ void gxdbqpatt (gaint, struct gxdbquery *);
+ void gxdbsettransclr (gaint);
+@@ -536,6 +537,8 @@
+ void gxnmap (gadouble, gadouble, gadouble, gadouble);
+ void gxmout (int, gadouble, gadouble, gadouble, gadouble, gadouble);
+ int  gxltln (struct mapprj *);
++void gxsetllasp (gadouble);
++gadouble gxqllasp (void);
+ int  gxscld (struct mapprj *, int, int);
+ int  gxnste (struct mapprj *);
+ void gxnpst (gadouble, gadouble, gadouble *, gadouble *);
+@@ -573,5 +576,3 @@
+ void gxdclip (gadouble, gadouble, gadouble, gadouble);
+ gaint gxdacol (gaint, gaint, gaint, gaint, gaint);
+ 
+-
+-
+--- grads-2.2.1.orig/src/gxdb.c
++++ grads-2.2.1/src/gxdb.c
+@@ -51,6 +51,7 @@
+ static char *fontname[100];
+ static char *fn_serif = "serif";
+ static char *fn_sans = "sans-serif";
++static char fn_user_sans[256];
+ static gaint fnbold[100];
+ static gaint fnitalic[100];
+ static gaint hershflag;                /* For fn 1 to 6, use Hershey fonts or not */
+@@ -106,6 +107,7 @@
+   fontname[2] = fn_sans;  fnbold[2] = 0;  fnitalic[2] = 1;
+   fontname[4] = fn_sans;   fnbold[4] = 1;  fnitalic[4] = 0;
+   fontname[5] = fn_serif;  fnbold[5] = 1;  fnitalic[5] = 0;
++  fn_user_sans[0] = '\0';
+ 
+   /* other flags for this and that */
+   hershflag  = 0;     /* zero, use hershey fonts.  1, use emulation. */  
+@@ -115,6 +117,22 @@
+    
+ }
+ 
++void gxdbsetfontfamily (char *str) {
++gaint i,len;
++
++  if (str==NULL) return;
++  len = 0;
++  while (*(str+len) && *(str+len)!='\n') len++;
++  while (len>0 && (*(str+len-1)==' ' || *(str+len-1)=='\t')) len--;
++  if (len<1) return;
++  if (len>255) len = 255;
++  for (i=0; i<len; i++) fn_user_sans[i] = *(str+i);
++  fn_user_sans[len] = '\0';
++  fontname[0] = fn_user_sans;
++  fontname[2] = fn_user_sans;
++  fontname[4] = fn_user_sans;
++}
++
+ /* Set a font name for a font from 10 to 99.  
+    Use of a font number that has no defined font family name will be handled
+    by the device backend, usually by using a default sans-serif font. */
+@@ -319,4 +337,3 @@
+     return (dbdevbck);
+ }
+ 
+-
+--- grads-2.2.1.orig/src/gxwmap.c
++++ grads-2.2.1/src/gxwmap.c
+@@ -35,6 +35,7 @@
+ static gadouble lomin, lomax, lamin, lamax;
+ static gadouble lonref;    /* Reference longitude for adjustment */
+ static gaint adjtyp = 0;  /* Direction adjustment class */
++static gadouble latlon_aspect_scale = 1.2;
+ 
+ /* Caching stuff */
+ 
+@@ -313,7 +314,7 @@
+ 
+   lndif = mpj->lnmx - mpj->lnmn;
+   ltdif = mpj->ltmx - mpj->ltmn;
+-  aspect = 1.2*ltdif/lndif;
++  aspect = latlon_aspect_scale*ltdif/lndif;
+   aspect2 = (mpj->ymx - mpj->ymn) / (mpj->xmx - mpj->xmn);
+   if (aspect > aspect2) {
+     xdif = (mpj->xmx - mpj->xmn) * aspect2/aspect;
+@@ -340,6 +341,14 @@
+   return (0);
+ }
+ 
++void gxsetllasp (gadouble scale) {
++  if (scale>0.0) latlon_aspect_scale = scale;
++}
++
++gadouble gxqllasp (void) {
++  return latlon_aspect_scale;
++}
++
+ /* Routine for north polar stereographic.  Projection scaling
+    is set along with level 1 linear scaling.   The only difficult
+    aspect to this is to set the level 1 linear scaling such that
+--- grads-2.2.1.orig/src/gauser.c
++++ grads-2.2.1/src/gauser.c
+@@ -52,6 +52,9 @@
+ static struct gacmn *savpcm;
+ static struct gxdsubs *dsubs=NULL; /* function pointers for display  */
+ static struct gxpsubs *psubs=NULL; /* function pointers for printing */
++static gaint panel_rows = 1;
++static gaint panel_cols = 1;
++static gadouble panel_gap = 0.12;
+ 
+ void gapysavpcm(struct gacmn *);   /* function prototype, used by gradspy */
+ 
+@@ -72,7 +75,7 @@
+ struct gadefn *pdf,*pdf2;
+ struct gaclct *clct,*clct2;
+ gaint rc,reinit,fnum,i,j,len,retcod,flag,xin,yin,bwin,fmtflg,tcolor,pos,size,*ioff,rem;
+-gadouble border,*dx,*dy;
++gadouble border,*dx,*dy,scale;
+ gafloat *rvals=NULL,*ivals=NULL,*jvals=NULL,*ival,*jval;
+ char cc[260], bgImage[256], fgImage[256], pdefname[256];
+ char *cmd,*rslt,*ccc,*ch,ext[10];
+@@ -201,6 +204,9 @@
+     pcm->xsiz = pcm->pxsize;
+     pcm->ysiz = pcm->pysize;
+     gxvpag (pcm->xsiz, pcm->ysiz, 0.0, pcm->xsiz, 0.0, pcm->ysiz);
++    panel_rows = 1;
++    panel_cols = 1;
++    panel_gap = 0.12;
+     /* reset gacmn and call gacln */
+     gainit();
+     gacln (pcm,1);
+@@ -319,6 +325,7 @@
+       gxdbck(0);             /* device backgroud reset to black only on reinit, not reset */
+     }
+     dsubs->gxdsignal(3);     /* tell hardware to re-enable anti-aliasing */
++    gxsetllasp(1.2);         /* reset lat/lon map aspect to classic GrADS */
+     gxdbsethersh(0);         /* set hershey font on   */
+     gxchdf(0);               /* set default font to 0 */ 
+     gxcolr(1);               /* set color to foreground */    
+@@ -569,7 +576,7 @@
+     gaprnt(0,"ERROR: The \"print\" command is no longer valid. Use \"gxprint\" instead.\n");
+     goto retrn;
+   }
+-  else if (cmpwrd("gxprint",cmd) || cmpwrd("printim",cmd)) {
++  else if (cmpwrd("gxprint",cmd) || cmpwrd("printim",cmd) || cmpwrd("export",cmd)) {
+     /* check for output file name */
+     if ((ch=nxtwrd(com)) == NULL) {   
+       gaprnt (0,"GXPRINT error:  missing output file name\n");
+@@ -591,6 +598,7 @@
+     fgImage[0] = '\0';
+     tcolor = -1;
+     border = -1.0;
++    scale = -1.0;
+ 
+     /* parse the user-provided options */
+     while ( (cmd=nxtwrd(cmd))!=NULL && (com=nxtwrd(com))!=NULL) {
+@@ -645,7 +653,68 @@
+ 	  gaprnt(1,"GXPRINT warning: Missing transparent color number\n");
+ 	  if (cmd == NULL) break;
+ 	}
++      }
++      else if (cmpwrd("transparent",cmd)) {
++        tcolor = 0;
++      }
++      else if (cmpwrd("width",cmd)) {
++        com=nxtwrd(com);
++        if((cmd=nxtwrd(cmd)) != NULL) {
++          if (intprs(cmd,&xin) == NULL) {
++            gaprnt(1,"GXPRINT warning: Invalid width\n");
++            xin = -999;
++          }
++        } else {
++          gaprnt(1,"GXPRINT warning: Missing width\n");
++          if (cmd == NULL) break;
++        }
+       }
++      else if (cmpwrd("height",cmd)) {
++        com=nxtwrd(com);
++        if((cmd=nxtwrd(cmd)) != NULL) {
++          if (intprs(cmd,&yin) == NULL) {
++            gaprnt(1,"GXPRINT warning: Invalid height\n");
++            yin = -999;
++          }
++        } else {
++          gaprnt(1,"GXPRINT warning: Missing height\n");
++          if (cmd == NULL) break;
++        }
++      }
++      else if (cmpwrd("size",cmd)) {
++        com=nxtwrd(com);
++        if((cmd=nxtwrd(cmd)) != NULL) {
++          if (intprs(cmd,&xin) == NULL) {
++            gaprnt(1,"GXPRINT warning: Invalid width\n");
++            xin = -999;
++          }
++        } else {
++          gaprnt(1,"GXPRINT warning: Missing width\n");
++          if (cmd == NULL) break;
++        }
++        com=nxtwrd(com);
++        if((cmd=nxtwrd(cmd)) != NULL) {
++          if (intprs(cmd,&yin) == NULL) {
++            gaprnt(1,"GXPRINT warning: Invalid height\n");
++            yin = -999;
++          }
++        } else {
++          gaprnt(1,"GXPRINT warning: Missing height\n");
++          if (cmd == NULL) break;
++        }
++      }
++      else if (cmpwrd("scale",cmd)) {
++        com=nxtwrd(com);
++        if((cmd=nxtwrd(cmd)) != NULL) {
++          if (getdbl(cmd,&scale) == NULL || scale<=0.0) {
++            gaprnt(1,"GXPRINT warning: Invalid scale\n");
++            scale = -1.0;
++          }
++        } else {
++          gaprnt(1,"GXPRINT warning: Missing scale\n");
++          if (cmd == NULL) break;
++        }
++      }
+       /* set horizontal image size */
+       else if (*cmd=='x') {
+         if (intprs(cmd+1,&(xin)) == NULL ) {
+@@ -701,6 +770,22 @@
+       gaprnt (0,"GXPRINT error: Unable to determine output format\n");
+       retcod = 1;
+       goto retrn;
++    }
++
++    if (scale>0.0 && fmtflg>=5) {
++      if (xin<0 && yin<0) {
++        if (pcm->xsiz > pcm->ysiz) {
++          xin = (gaint)(800.0*scale + 0.5);
++          yin = (gaint)(((pcm->ysiz/pcm->xsiz)*800.0*scale) + 0.5);
++        } else {
++          xin = (gaint)(((pcm->xsiz/pcm->ysiz)*800.0*scale) + 0.5);
++          yin = (gaint)(800.0*scale + 0.5);
++        }
++      } else if (xin>0 && yin<0) {
++        yin = (gaint)(((gadouble)xin * pcm->ysiz/pcm->xsiz) + 0.5);
++      } else if (yin>0 && xin<0) {
++        xin = (gaint)(((gadouble)yin * pcm->xsiz/pcm->ysiz) + 0.5);
++      }
+     }
+     
+     /* Image size specs are incompatible with non-image formats */
+@@ -4656,15 +4741,40 @@
+ /* Handle help command */
+ 
+ gaint gahelp (char *cmd, struct gacmn *pcm) {
++char *arg;
+ 
+-  printf ("\nFor Complete Information See:  http://cola.gmu.edu/grads\n\n");
+-  printf ("Basic Commands:\n");
+-  printf (" OPEN <descr>      opens a data file \n");
+-  printf (" Query             shows current status \n");
+-  printf (" Clear             clears graphics window \n");
+-  printf (" SET <args>        sets options \n");
+-  printf (" Display expr      displays a variable graphically \n");
+-  printf (" QUIT              exits the program \n");
++  arg = nxtwrd(cmd);
++  if (arg && cmpwrd("camo",arg)) {
++    printf ("\nCAMO drawing commands (%s):\n",CAMO_VERSION);
++    printf (" set theme classic|modern\n");
++    printf (" set rgbmap viridis|plasma|magma|cividis [start] [reverse]\n");
++    printf (" set fontfamily NAME\n");
++    printf (" set panels ROW COL [gap]   then: set panel N\n");
++    printf (" set panels off\n");
++    printf (" export FILE [transparent] [scale N]\n");
++    printf (" export FILE [width N|height N|size W H]\n");
++    printf ("\nExamples:\n");
++    printf (" set theme modern\n");
++    printf (" set rgbmap cividis\n");
++    printf (" export figure.png transparent scale 2\n");
++    printf (" export figure.pdf\n");
++    return (0);
++  }
++
++  printf ("\nGrADS %s CAMO build %s\n",GRADS_VERSION,CAMO_VERSION);
++  printf ("Basic commands:\n");
++  printf (" open FILE         open a GrADS descriptor file\n");
++  printf (" sdfopen FILE      open a self-describing data file\n");
++  printf (" query ARG         show files, dimensions, config, and status\n");
++  printf (" set ARG VALUE     change analysis or drawing options\n");
++  printf (" display EXPR      evaluate and draw an expression (short: d)\n");
++  printf (" clear             clear the graphics page\n");
++  printf (" run FILE          run a GrADS script\n");
++  printf (" gxprint FILE      write the current page\n");
++  printf (" quit              exit GrADS\n");
++  printf ("\nCAMO additions: type 'help camo' for themes, palettes, panels,\n");
++  printf ("font selection, and export examples. Packaged documentation is\n");
++  printf ("installed under /usr/share/doc/grads/.\n");
+   return (0);
+ }
+ 
+@@ -5005,7 +5115,204 @@
+ /* Handle set command */
+ 
+ char *justs[9] = {"bl","bc","br","l","c","r","tl","tc","tr"};
++
++struct gapalette {
++  char *name;
++  gaint red[13];
++  gaint green[13];
++  gaint blue[13];
++};
++
++static struct gapalette palettes[4] = {
++  {"viridis",
++    { 68,  71,  59,  44,  33,  39,  52,  66,  85, 112, 149, 194, 253},
++    {  1,  44,  82, 113, 144, 173, 191, 204, 215, 224, 230, 223, 231},
++    { 84, 122, 139, 142, 141, 129, 111,  90,  69,  49,  39,  35,  37}},
++  {"plasma",
++    { 13,  63, 106, 143, 176, 204, 225, 240, 249, 252, 249, 240, 239},
++    {  8,   4,   0,  13,  42,  71, 100, 130, 160, 190, 217, 241, 248},
++    {135, 156, 168, 164, 143, 120,  98,  78,  58,  44,  36,  33,  33}},
++  {"magma",
++    {  0,  22,  59,  93, 128, 161, 191, 219, 239, 251, 254, 252, 252},
++    {  0,  14,  15,  25,  37,  54,  76, 105, 138, 174, 206, 236, 253},
++    {  4,  62, 112, 135, 130, 121, 117, 116,  98,  81, 108, 172, 191}},
++  {"cividis",
++    {  0,   0,   0,  25,  51,  76, 101, 127, 153, 178, 204, 229, 254},
++    { 34,  48,  63,  78,  94, 110, 126, 143, 160, 177, 194, 212, 232},
++    { 78, 100, 119, 126, 124, 118, 109,  97,  84,  70,  56,  40,  55}}
++};
++
++static gaint gaset_panel (char *cmd, struct gacmn *pcm) {
++gaint panel,row,col;
++gadouble pw,ph,xlo,xhi,ylo,yhi;
++
++  if (cmd==NULL) {
++    gaprnt(0,"SET PANEL Error: missing panel number\n");
++    return(1);
++  }
++  if (intprs(cmd,&panel) == NULL) {
++    gaprnt(0,"SET PANEL Error: invalid panel number\n");
++    return(1);
++  }
++  if (panel<1 || panel>panel_rows*panel_cols) {
++    gaprnt(0,"SET PANEL Error: panel number is outside the current layout\n");
++    return(1);
++  }
++  row = (panel-1) / panel_cols;
++  col = (panel-1) % panel_cols;
++  pw = (pcm->pxsize - panel_gap*(gadouble)(panel_cols-1)) / (gadouble)panel_cols;
++  ph = (pcm->pysize - panel_gap*(gadouble)(panel_rows-1)) / (gadouble)panel_rows;
++  if (pw<=0.0 || ph<=0.0) {
++    gaprnt(0,"SET PANEL Error: panel gap is too large\n");
++    return(1);
++  }
++  xlo = (gadouble)col * (pw + panel_gap);
++  xhi = xlo + pw;
++  yhi = pcm->pysize - (gadouble)row * (ph + panel_gap);
++  ylo = yhi - ph;
++  pcm->xsiz = pw;
++  pcm->ysiz = ph;
++  pcm->paflg = 0;
++  pcm->pass = 0;
++  gxvpag (pcm->xsiz, pcm->ysiz, xlo, xhi, ylo, yhi);
++  snprintf(pout,1255,"panel = %i (%i x %i)\n",panel,panel_rows,panel_cols);
++  gaprnt(2,pout);
++  return(0);
++}
+ 
++static gaint gaset_panels (char *cmd, struct gacmn *pcm) {
++gaint rows,cols;
++gadouble gap;
++
++  if (cmd==NULL) {
++    gaprnt(0,"SET PANELS Error: missing row count\n");
++    return(1);
++  }
++  if (cmpwrd("off",cmd) || cmpwrd("reset",cmd)) {
++    panel_rows = 1;
++    panel_cols = 1;
++    panel_gap = 0.12;
++    pcm->xsiz = pcm->pxsize;
++    pcm->ysiz = pcm->pysize;
++    pcm->paflg = 0;
++    pcm->pass = 0;
++    gxvpag (pcm->xsiz, pcm->ysiz, 0.0, pcm->xsiz, 0.0, pcm->ysiz);
++    gaprnt(2,"panels = off\n");
++    return(0);
++  }
++  if (intprs(cmd,&rows) == NULL) {
++    gaprnt(0,"SET PANELS Error: invalid row count\n");
++    return(1);
++  }
++  cmd = nxtwrd(cmd);
++  if (cmd==NULL || intprs(cmd,&cols) == NULL) {
++    gaprnt(0,"SET PANELS Error: invalid column count\n");
++    return(1);
++  }
++  gap = 0.12;
++  if ((cmd=nxtwrd(cmd)) != NULL) {
++    if (getdbl(cmd,&gap) == NULL) {
++      gaprnt(0,"SET PANELS Error: invalid gap\n");
++      return(1);
++    }
++  }
++  if (rows<1 || rows>9 || cols<1 || cols>9 || gap<0.0) {
++    gaprnt(0,"SET PANELS Error: rows/columns must be 1-9 and gap must be non-negative\n");
++    return(1);
++  }
++  panel_rows = rows;
++  panel_cols = cols;
++  panel_gap = gap;
++  snprintf(pout,1255,"panels = %i x %i gap %g\n",panel_rows,panel_cols,panel_gap);
++  gaprnt(2,pout);
++  return gaset_panel("1",pcm);
++}
++
++static gaint gaset_rgbmap (char *cmd, struct gacmn *pcm) {
++gaint p,i,j,start,rev;
++char *name;
++
++  name = cmd;
++  if (name==NULL) {
++    gaprnt(0,"SET RGBMAP Error: missing palette name\n");
++    return(1);
++  }
++  p = -1;
++  for (i=0; i<4; i++) {
++    if (cmpwrd(palettes[i].name,name)) p = i;
++  }
++  if (p<0) {
++    gaprnt(0,"SET RGBMAP Error: valid palettes are viridis, plasma, magma, cividis\n");
++    return(1);
++  }
++  start = 16;
++  rev = 0;
++  while ((cmd = nxtwrd(cmd)) != NULL) {
++    if (cmpwrd("reverse",cmd) || cmpwrd("rev",cmd)) rev = 1;
++    else {
++      if (intprs(cmd,&start) == NULL) {
++        gaprnt(0,"SET RGBMAP Error: expected color number or reverse\n");
++        return(1);
++      }
++    }
++  }
++  if (start<16 || start>2036) {
++    gaprnt(0,"SET RGBMAP Error: start color must be between 16 and 2036\n");
++    return(1);
++  }
++  for (i=0; i<13; i++) {
++    j = rev ? 12-i : i;
++    gxacol(start+i, palettes[p].red[j], palettes[p].green[j], palettes[p].blue[j], 255);
++    pcm->rbcols[i] = start+i;
++  }
++  pcm->rbflg = 13;
++  snprintf(pout,1255,"rgbmap %s loaded into colors %i-%i; rainbow colors now use this palette\n",
++           palettes[p].name,start,start+12);
++  gaprnt(2,pout);
++  return(0);
++}
++
++static gaint gaset_theme (char *cmd, struct gacmn *pcm) {
++  if (cmd==NULL) {
++    gaprnt(0,"SET THEME Error: missing theme name\n");
++    return(1);
++  }
++  if (cmpwrd("classic",cmd)) {
++    gxsetllasp(1.2);
++    gxdbsethersh(0);
++    gxchdf(0);
++    pcm->grflag = 1;
++    pcm->grstyl = 5;
++    pcm->grcolr = 15;
++    pcm->grthck = 4;
++    pcm->mapcol = -9;
++    pcm->mapstl = 1;
++    pcm->mapthk = 1;
++    gaprnt(2,"theme = classic\n");
++    return(0);
++  }
++  if (cmpwrd("modern",cmd)) {
++    gxsetllasp(1.0);
++    if (dsubs && psubs && dsubs->gxdckfont()!=0 && psubs->gxpckfont()!=0) {
++      gxdbsethersh(1);
++      gxchdf(0);
++    }
++    pcm->grflag = 1;
++    pcm->grstyl = 1;
++    pcm->grcolr = 15;
++    pcm->grthck = 1;
++    pcm->mapcol = 15;
++    pcm->mapstl = 1;
++    pcm->mapthk = 2;
++    pcm->aaflg = 1;
++    gxsignal(3);
++    gaprnt(2,"theme = modern\n");
++    return(0);
++  }
++  gaprnt(0,"SET THEME Error: valid themes are classic or modern\n");
++  return(1);
++}
++
+ gaint gaset (char *cmd, char *com, struct gacmn *pcm) {
+ struct dt tdef;
+ struct gawgds *wgds;
+@@ -5061,6 +5368,35 @@
+     gaprnt (0,"SET error:  missing operand\n");
+     return (1);
+   }
++  else if (cmpwrd("theme",cmd)) {
++    return gaset_theme(nxtwrd(cmd),pcm);
++  }
++  else if (cmpwrd("fontfamily",cmd)) {
++    cmd = nxtwrd(cmd);
++    if (cmd==NULL) {
++      gaprnt(0,"SET FONTFAMILY Error: missing font family\n");
++      return(1);
++    }
++    if (dsubs->gxdckfont()==0 || psubs->gxpckfont()==0) {
++      gaprnt(0,"SET FONTFAMILY Error: graphics backends do not support non-Hershey fonts\n");
++      return(1);
++    }
++    gxdbsetfontfamily(cmd);
++    gxdbsethersh(1);
++    gxchdf(0);
++    snprintf(pout,1255,"fontfamily = %s\n",cmd);
++    gaprnt(2,pout);
++    return(0);
++  }
++  else if (cmpwrd("panels",cmd)) {
++    return gaset_panels(nxtwrd(cmd),pcm);
++  }
++  else if (cmpwrd("panel",cmd)) {
++    return gaset_panel(nxtwrd(cmd),pcm);
++  }
++  else if (cmpwrd("rgbmap",cmd)) {
++    return gaset_rgbmap(nxtwrd(cmd),pcm);
++  }
+   else if (cmpwrd("defval",cmd)) {
+     i1 = gaqdef (cmd, pcm, 1);
+     return (i1);
+--- grads-2.2.1.orig/src/grads.h
++++ grads-2.2.1/src/grads.h
+@@ -16,6 +16,11 @@
+ 
+ #define UDPVERS 1
+ 
++/* RPM packaging defines this from the central CAMO release setting. */
++#ifndef CAMO_VERSION
++#define CAMO_VERSION "development"
++#endif
++
+ /* Handling of missing data values. After the data I/O is done, 
+    grid values are tested to see if they are within a small range 
+    (+-value/EPSILON) of the missing value. If true, then the undef 
+--- grads-2.2.1.orig/src/grads.c
++++ grads-2.2.1/src/grads.c
+@@ -206,6 +206,7 @@
+   if (ipcflg) printf("\n<IPC>" );  /* delimit splash screen */
+  
+   printf("\nGrid Analysis and Display System (GrADS) Version %s\n",gatxtl(GRADS_VERSION,0));
++  printf("Unofficial CAMO build %s (not an official upstream release)\n",CAMO_VERSION);
+   printf("Copyright (C) 1988-2018 by George Mason University\n");
+   printf("GrADS comes with ABSOLUTELY NO WARRANTY\n");
+   printf("See file COPYRIGHT for more information\n\n");
+@@ -817,4 +818,3 @@
+   }
+   return (NULL);
+ }
+-
+--- grads-2.2.1.orig/src/gacfg.c
++++ grads-2.2.1/src/gacfg.c
+@@ -79,7 +79,7 @@
+ if (dsubs==NULL) dsubs = getdsubs();  /* get ptrs to the graphics display functions */
+ if (psubs==NULL) psubs = getpsubs();  /* get ptrs to the graphics printing functions */
+ 
+-snprintf(cmd,255,"Config: v%s",GRADS_VERSION);
++snprintf(cmd,255,"Config: v%s CAMO build %s",GRADS_VERSION,CAMO_VERSION);
+ #if BYTEORDER==1
+  strcat(cmd," big-endian");
+ #else
+@@ -124,6 +124,8 @@
+  }
+  
+  gaprnt (verbose, "Grid Analysis and Display System (GrADS) Version " GRADS_VERSION "\n");
++ snprintf(cmd,255,"Unofficial CAMO build %s (not an official upstream release)\n",CAMO_VERSION);
++ gaprnt (verbose, cmd);
+  gaprnt (verbose, "Copyright (C) 1988-2018 by George Mason University \n");
+  gaprnt (verbose, "GrADS comes with ABSOLUTELY NO WARRANTY \n");
+  gaprnt (verbose, "See file COPYRIGHT for more information \n\n");
+@@ -208,4 +210,3 @@
+ 
+  gaprnt(verbose,"The 'q gxconfig' command returns Graphics configuration information\n");
+ }
+-

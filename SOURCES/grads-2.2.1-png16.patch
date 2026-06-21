@@ -1,0 +1,52 @@
+Author: Alastair McKinstry <mckinstry@debian.org>
+Description: Move from png1.5 -> png1.6
+Last-Updated: 2016-01-05
+Forwarded: no
+
+Index: grads-2.2.1/configure.ac
+===================================================================
+--- grads-2.2.1.orig/configure.ac
++++ grads-2.2.1/configure.ac
+@@ -413,12 +413,12 @@ fi
+ if test "Z$ga_supplib_dir" != "Z" ; then 
+   echo looking in $ga_supplib_dir for additional dependent libs
+ 
+-  # png15
++  # png16
+   echo 
+   echo png
+   echo ---
+   GA_SET_FLAGS([])
+-  AC_CHECK_LIB([png15], [main], [have_png=yes])
++  AC_CHECK_LIB([png16], [main], [have_png=yes])
+   GA_UNSET_FLAGS
+ 
+   # zlib
+@@ -526,7 +526,7 @@ if test "Z$ga_supplib_dir" != "Z" ; then
+     [ AC_CHECK_LIB([grib2c], [main], 
+       [ use_grib2=yes 
+ #        GA_SET_LIB_VAR([grib2_libs], [grib2c jasper png15 z])
+-        GA_SET_DYNLIB_VAR([grib2_libs], [grib2c jasper png15 z])
++        GA_SET_DYNLIB_VAR([grib2_libs], [grib2c jasper png16 z])
+       ])
+     ])
+     GA_UNSET_FLAGS
+Index: grads-2.2.1/doc/supplibs.html
+===================================================================
+--- grads-2.2.1.orig/doc/supplibs.html
++++ grads-2.2.1/doc/supplibs.html
+@@ -118,10 +118,10 @@ mkdir $HOME/supplibs/bin</span></p>
+       --prefix=$HOME/supplibs/src/libpng<br>
+       make ; 
+       make install<br>
+-      cp $HOME/supplibs/src/libpng/lib/libpng15.a $HOME/supplibs/lib<br>
+-      mkdir $HOME/supplibs/include/libpng15<br>
+-    cp $HOME/supplibs/src/libpng/include/libpng15/*.h $HOME/supplibs/include/libpng15<br>
+-    cp $HOME/supplibs/src/libpng/lib/pkgconfig/libpng15.pc $HOME/supplibs/lib/pkgconfig</p>
++      cp $HOME/supplibs/src/libpng/lib/libpng16.a $HOME/supplibs/lib<br>
++      mkdir $HOME/supplibs/include/libpng16<br>
++    cp $HOME/supplibs/src/libpng/include/libpng16/*.h $HOME/supplibs/include/libpng16<br>
++    cp $HOME/supplibs/src/libpng/lib/pkgconfig/libpng16.pc $HOME/supplibs/lib/pkgconfig</p>
+     <p><span class="style1">Note: The pkgconfig file is required for building cairo</span></p></td>
+   </tr>
+   <tr bgcolor="ccdceb">

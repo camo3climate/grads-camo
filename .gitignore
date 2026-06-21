@@ -1,0 +1,24 @@
+# build and work directories
+work/
+.rpmbuild/
+release/
+outputs/
+logs/
+
+# built packages and logs
+*.rpm
+*.src.rpm
+*.log
+
+# compiled objects / libraries
+*.o
+*.a
+*.so
+*.so.*
+*.la
+*.lo
+
+# editor / OS noise
+.DS_Store
+*~
+*.swp

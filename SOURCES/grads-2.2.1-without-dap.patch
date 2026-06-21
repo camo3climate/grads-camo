@@ -1,0 +1,30 @@
+Description: add --without-dap to disable grid OPeNDAP even when NetCDF has DAP
+Author: Codex packaging helper
+Forwarded: no
+
+--- a/configure.ac
++++ b/configure.ac
+@@ -74,6 +74,12 @@ AC_ARG_WITH([gadap],
+             [],
+             [with_gadap=no])
+ 
++AC_ARG_WITH([dap],
++            [AS_HELP_STRING([--without-dap], [disable OPeNDAP support for gridded NetCDF data])],
++            [],
++            [with_dap=auto])
++
++
+ # ----------------------------------------------------
+ # Checks for programs
+ # ----------------------------------------------------
+@@ -757,6 +763,10 @@ if test "$have_udunits" = "yes" ; then
+ 
+ fi
+ # set output variables
++if test "x$with_dap" = "xno" ; then
++  use_dap=no
++fi
++
+ if test $use_nc != "yes" ; then
+   AC_DEFINE(USENETCDF, 0, [Enable netcdf])
+   AC_DEFINE(HAVENETCDF4, 0, [Enable netcdf4])

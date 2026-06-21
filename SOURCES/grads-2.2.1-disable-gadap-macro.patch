@@ -1,0 +1,21 @@
+Description: avoid undefined GA_CHECK_LIB_GADAP when GADAP is disabled
+Author: Codex packaging helper
+Forwarded: no
+
+--- a/configure.ac
++++ b/configure.ac
+@@ -813,13 +813,7 @@
+     fi
+   fi
+ # check in system locations
+-  if test $use_gadap != "yes" -a "$ga_dyn_supplibs" = "yes" ; then
+-    echo looking in other system locations
+-    GA_CHECK_LIB_GADAP(
+-    [ use_gadap=yes 
+-      gadap_libs=$GADAP_LIBS
+-    ])
+-  fi
++  echo "System-location GADAP probing disabled for this package."
+ # set output variables
+   if test $use_gadap != "yes" ; then
+     AC_DEFINE(USEGADAP, 0, [Enable OPeNDAP for station data])

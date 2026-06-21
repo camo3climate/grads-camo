@@ -1,0 +1,40 @@
+Author: Steve Langasek <steve.langasek@linaro.org>
+Description: remove wrong "supplibs" dir handling
+ pass libraries as -l arguments, instead of guessing and passing absolute
+ paths.
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/749178
+Forwarded: not-needed
+
+Index: grads-2.2.1/src/Makefile.am
+===================================================================
+--- grads-2.2.1.orig/src/Makefile.am
++++ grads-2.2.1/src/Makefile.am
+@@ -82,6 +82,7 @@ DISTCLEANFILES = buildinfo.h config.h
+ 
+ ## Paths to external headers and libraries
+ 
++SUPPLIBS                = /usr
+ supp_include_dir	= $(SUPPLIBS)/include
+ supp_lib_dir		= $(SUPPLIBS)/lib
+ LDADD			= -L$(supp_lib_dir) $(geotiff_ldflags) $(gd_ldflags)
+Index: grads-2.2.1/acinclude.m4
+===================================================================
+--- grads-2.2.1.orig/acinclude.m4
++++ grads-2.2.1/acinclude.m4
+@@ -75,14 +75,12 @@ AC_DEFUN([GA_UNSET_FLAGS],
+ ])
+ 
+ dnl GA_SET_LIB_VAR : Puts necessary linker options to link with libraries given into
+-dnl                  a shell variable. They will have the form 'supplib_dir/libname.a'.
++dnl                  a shell variable.
+ dnl   args:	   : shell-variable-name, list-of-libraries (e.g. [readline termcap])
+ AC_DEFUN([GA_SET_LIB_VAR],
+ [
+-  ga_lib_prefix='$(supp_lib_dir)/lib'
+-  ga_lib_suffix='.a'
+   for ga_lib_name in $2 ; do
+-      $1="$$1 ${ga_lib_prefix}${ga_lib_name}${ga_lib_suffix}"
++      $1="$$1 -l${ga_lib_name}"
+   done  
+ ])
+ 

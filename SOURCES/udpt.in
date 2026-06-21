@@ -1,0 +1,11 @@
+# Type     Name     Full path to shared object file
+# ----     ----     -------------------------------
+gxdisplay  Cairo    @LIBDIR@/grads/libgxdCairo.so
+gxdisplay  X11      @LIBDIR@/grads/libgxdX11.so
+gxdisplay  gxdummy  @LIBDIR@/grads/libgxdummy.so
+*
+gxprint    Cairo    @LIBDIR@/grads/libgxpCairo.so
+gxprint    GD       @LIBDIR@/grads/libgxpGD.so
+gxprint    gxdummy  @LIBDIR@/grads/libgxdummy.so
+*
+# function  name     /path/to/user-defined-function.so

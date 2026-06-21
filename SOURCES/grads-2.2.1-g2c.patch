@@ -1,0 +1,102 @@
+Description: link against g2c instead of grib2c
+Author: Marco Lazzeri <marco@marcolazzeri.org>
+Last-Updated: 2026-01-13
+Forwarded: no
+
+--- a/configure.ac
++++ b/configure.ac
+@@ -522,10 +522,10 @@
+   echo looking in $ga_supplib_dir 
+     GA_SET_FLAGS([])
+     AC_CHECK_HEADER(grib2.h,
+-    [ AC_CHECK_LIB([grib2c], [main], 
++    [ AC_CHECK_LIB([g2c], [g2c_csv_init], 
+       [ use_grib2=yes 
+ #        GA_SET_LIB_VAR([grib2_libs], [grib2c jasper png15 z])
+-        GA_SET_DYNLIB_VAR([grib2_libs], [grib2c])
++        GA_SET_DYNLIB_VAR([grib2_libs], [g2c])
+       ])
+     ])
+     GA_UNSET_FLAGS
+@@ -534,10 +534,19 @@
+ # check in system locations
+ if test "$use_grib2" != "yes" -a "$ga_dyn_supplibs" = "yes" ; then
+   echo looking in other system locations
+-  GA_CHECK_LIB_GRIB2(
++#  GA_CHECK_LIB_GRIB2(
++#  [ use_grib2=yes 
++#    grib2_libs=$G2_LIBS
++#  ])
++    GA_SET_FLAGS([])
++    AC_CHECK_HEADER(grib2.h,
++    [ AC_CHECK_LIB([g2c], [g2c_csv_init], 
+   [ use_grib2=yes 
+-    grib2_libs=$G2_LIBS
++#        GA_SET_LIB_VAR([grib2_libs], [grib2c jasper png15 z])
++        GA_SET_DYNLIB_VAR([grib2_libs], [g2c])
++      ])
+   ])
++    GA_UNSET_FLAGS
+ fi
+ # set output variables
+ if test "$use_grib2" != "yes" ; then
+--- a/m4/grib2.m4
++++ b/m4/grib2.m4
+@@ -4,13 +4,13 @@
+ [
+   ga_check_grib2="no"
+   AC_CHECK_HEADER(grib2.h,
+-  [ AC_CHECK_LIB(grib2c, main, [
++  [ AC_CHECK_LIB(g2c, g2c_csv_init, [
+     AC_CHECK_LIB([png15], [main], [
+     AC_CHECK_LIB([z], [compress], [
+     AC_CHECK_LIB([jpeg], [main], [
+     AC_CHECK_LIB([jasper], [main], [
+       ga_check_grib2="yes"
+-      G2_LIBS="-lgrib2c -ljasper -lpng15 -lz"
++      G2_LIBS="-lg2c -ljasper -lpng15 -lz"
+     ])
+     ])
+     ])
+--- a/src/gacfg.c
++++ b/src/gacfg.c
+@@ -151,7 +151,7 @@
+ #endif
+ 
+ #if GRIB2==1
+-   snprintf(cmd,255," -+- GRIB2 interface ENABLED  %s \n",G2_VERSION);
++   snprintf(cmd,255," -+- GRIB2 interface ENABLED  %s \n",G2C_VERSION);
+    gaprnt(verbose,cmd);
+ #else 
+    gaprnt(verbose," -+- GRIB2 interface DISABLED\n");
+--- a/src/gagmap.c
++++ b/src/gagmap.c
+@@ -2468,9 +2468,9 @@
+ //$$$
+ {
+       g2int  ret;
+-      g2int k,k4,nread,lim,start,vers,lengrib;
++      g2int k,k4,nread,lim;
+       off_t ipos;
+-      int    end;
++      int    end, start, vers, lengrib;
+       unsigned char *cbuf;
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -2493,12 +2493,12 @@
+ //  LOOK FOR 'GRIB...' IN PARTIAL SECTION
+ 
+         for (k=0;k<lim;k++) {
+-          gbit(cbuf,&start,(k+0)*8,4*8);
+-          gbit(cbuf,&vers,(k+7)*8,1*8);
++          g2c_gbit_int(cbuf,&start,(k+0)*8,4*8);
++          g2c_gbit_int(cbuf,&vers,(k+7)*8,1*8);
+           if (start==1196575042 && (vers==1 || vers==2)) {
+ //  LOOK FOR '7777' AT END OF GRIB MESSAGE
+-            if (vers == 1) gbit(cbuf,&lengrib,(k+4)*8,3*8);
+-            if (vers == 2) gbit(cbuf,&lengrib,(k+12)*8,4*8);
++            if (vers == 1) g2c_gbit_int(cbuf,&lengrib,(k+4)*8,3*8);
++            if (vers == 2) g2c_gbit_int(cbuf,&lengrib,(k+12)*8,4*8);
+             ret=fseeko(lugb,ipos+(off_t)(k+lengrib-4),SEEK_SET);
+ //          Hard code to 4 instead of sizeof(g2int)
+             k4=fread(&end,4,1,lugb);

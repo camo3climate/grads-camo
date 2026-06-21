@@ -1,0 +1,26 @@
+Author: Alastair McKinstry <mcmkinstry@debian.org>
+Description: Remove unnnecessary dependencies on png, openjpeg.
+Last-Updated: 2016-06-10
+Forwarded: not-needed
+
+Index: grads-2.2.1/configure.ac
+===================================================================
+--- grads-2.2.1.orig/configure.ac
++++ grads-2.2.1/configure.ac
+@@ -519,14 +519,14 @@ echo
+ echo grib2
+ echo -----
+ if test "Z$ga_supplib_dir" != "Z" ; then 
+-  if test "$have_zlib" = "yes" -a "$have_png" = "yes" -a "$have_jasper" = "yes" ; then
++  if test "$have_zlib" = "yes" -a "$have_png" = "yes" ; then
+   echo looking in $ga_supplib_dir 
+     GA_SET_FLAGS([])
+     AC_CHECK_HEADER(grib2.h,
+     [ AC_CHECK_LIB([grib2c], [main], 
+       [ use_grib2=yes 
+ #        GA_SET_LIB_VAR([grib2_libs], [grib2c jasper png15 z])
+-        GA_SET_DYNLIB_VAR([grib2_libs], [grib2c jasper png16 z])
++        GA_SET_DYNLIB_VAR([grib2_libs], [grib2c])
+       ])
+     ])
+     GA_UNSET_FLAGS
