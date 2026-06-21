@@ -23,7 +23,7 @@ currently provided or claimed by this repository.
 
 Prebuilt RPMs are available from the GitHub Releases page:
 
-https://github.com/camo3climate/grads-camo/releases
+https://github.com/camo3climate/grads-camo/releases/tag/v2.2.1-camo26.0
 
 ## EL8 test status
 
