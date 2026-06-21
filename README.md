@@ -19,6 +19,12 @@ roadmap are in [PROJECT-SUMMARY.md](docs/PROJECT-SUMMARY.md).
 EL9, EL10, Ubuntu, and MacPorts support may be added later. They are not
 currently provided or claimed by this repository.
 
+## Downloads
+
+Prebuilt RPMs are available from the GitHub Releases page:
+
+https://github.com/camo3climate/grads-camo/releases
+
 ## EL8 test status
 
 The packaging baseline was built successfully on AlmaLinux 8.10 x86_64. The
