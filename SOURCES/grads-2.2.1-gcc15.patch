@@ -1,0 +1,166 @@
+Description: Changes needed for gcc-15 (type matches)
+Author: Alastair McKinstry <mckinstry@debian.org>
+Last-Updated: 2025-07-03
+Forwarded: no
+
+--- a/src/grads.h
++++ b/src/grads.h
+@@ -1302,5 +1302,5 @@
+ #endif
+ 
+ void *galloc(size_t,char *);
+-void gree();
++void gree(void *mem, char *ch);
+ void glook();
+--- a/src/gxcntr.c
++++ b/src/gxcntr.c
+@@ -21,7 +21,7 @@
+ 
+ /* function prototype */
+ void *galloc(size_t,char *);
+-void gree();
++void gree(void *, char *);
+ char *intprs (char *, gaint *);
+ char *getdbl (char *, gadouble *);
+ /* gaint gxclvert (FILE *); */
+--- a/src/gx.h
++++ b/src/gx.h
+@@ -559,7 +559,7 @@
+ void gxlamcp (gadouble, gadouble, gadouble *, gadouble *);
+ void gxlamcb (gadouble, gadouble, gadouble *, gadouble *);
+ gadouble *gxmpoly(gadouble *xy, gaint cnt, gadouble llinc, gaint *newcnt); 
+-void gree();
++void gree (void *mem, char *ch);
+ 
+ 
+ /* routines in gxX.c */
+--- a/src/gxshad2.c
++++ b/src/gxshad2.c
+@@ -52,7 +52,7 @@
+ char *getdbl (char *, gadouble *);
+ #endif
+ void *galloc(size_t, char *);
+-void gree ();
++void gree (void *,char *);
+ 
+ /* Variables shared between the different routines in this source file */
+ 
+--- a/src/gxsubs.c
++++ b/src/gxsubs.c
+@@ -27,7 +27,7 @@
+ #include "gx.h"
+ 
+ char *gaqupb (char *, gaint);
+-void gree ();
++void gree(void *mem, char *ch);
+ 
+ /* The following variables are local to this file, and are used by
+    all the routines in the file.    */
+--- a/src/grads.c
++++ b/src/grads.c
+@@ -83,7 +83,7 @@
+   gaint txtcs=-2;
+   gaint ipcflg = 0; /* for IPC friendly interaction via pipes */
+   char *icmd,*arg,*rc1;
+-  void gasigcpu() ;
++  void gasigcpu(int) ;
+   gaint wrhstflg=0; 
+   gadouble aspratio;
+   char *logfile,*userhome=NULL;
+--- a/src/gaexpr.c
++++ b/src/gaexpr.c
+@@ -263,12 +263,12 @@
+         for (j=0; j<BLKNUM; j++) {
+           if (stn->blks[j] != NULL) gree(stn->blks[j],"f172");
+         }
+-        gree(stn);
++        gree(stn, NULL);
+         pst->result.stn=NULL; 
+       }
+     }
+   }
+-  gree(stack);
++  gree(stack, NULL);
+   pass--;
+   return (err);
+ }
+--- a/src/gaio.c
++++ b/src/gaio.c
+@@ -4310,7 +4310,7 @@
+                 for (j=0; j<sz; j++) cattr_val[j] = strattr_val[0][j];
+                 cattr_val[sz]='\0';
+                 nc_free_string(asize, strattr_val);
+-                gree(strattr_val);
++                gree(strattr_val, NULL);
+                 gaprnt(2,abbrv); 
+                 gaprnt(2," String ");
+                 gaprnt(2,attr_name); 
+--- a/src/galloc.c
++++ b/src/galloc.c
+@@ -53,7 +53,7 @@
+ static char msg[501];
+ 
+ void *galloc (size_t, char *);
+-void gree (char *, char *);
++void gree (void *, char *);
+ void glook(void);
+ int verbo=0;
+ int buferr=0;   /* flag error on buffer exceeded */
+@@ -105,7 +105,7 @@
+ 
+ /* replacement for free */
+ 
+-void gree (char *mem, char *ch) {
++void gree (void *mem, char *ch) {
+ int i,j,flag;
+ size_t len;
+ char *mmm;
+--- a/src/gauser.c
++++ b/src/gauser.c
+@@ -8623,10 +8623,10 @@
+     *(fname+len)='\0';
+     /* try to open new filename */
+     if ((id=SHPOpen(fname,"rb"))!=NULL) {
+-      gree(fname);                    
++      gree(fname, NULL);                    
+       return(id);                                   /* success! */
+     } 
+-    gree(fname);                                    /* release filename */
++    gree(fname, NULL);                              /* release filename */
+     sdir+=ch1;                                      /* advance to delimiter */
+     if (*(sdir)=='\0') break;                       /* end of GASHP */
+     else sdir++;                                    /* advance past delimiter */
+@@ -8684,10 +8684,10 @@
+     *(fname+len)='\0';
+     /* try to open new filename */
+     if ((id=DBFOpen(fname,"rb"))!=NULL) {
+-      gree(fname);                    
++      gree(fname, NULL);                    
+       return(id);                                   /* success! */
+     } 
+-    gree(fname);                                    /* release filename */
++    gree(fname,NULL);                                    /* release filename */
+     sdir+=ch1;                                      /* advance to delimiter */
+     if (*(sdir)=='\0') break;                       /* end of GASHP */
+     else sdir++;                                    /* advance past delimiter */
+--- a/src/gasdf.c
++++ b/src/gasdf.c
+@@ -2961,7 +2961,7 @@
+                 for (j=0; j<sz; j++) cval[j] = strval[0][j];
+ 		cval[sz]='\0';
+                 nc_free_string(attlen, strval);
+-		gree(strval);
++		gree(strval, NULL);
+ 	      }
+ 	      break;
+ 	    case (NC_SHORT):
+--- a/src/gxwmap.c
++++ b/src/gxwmap.c
+@@ -27,7 +27,6 @@
+ /* #include "gxmap.h" */
+ 
+ int gagby (char *, int, int);
+-void gree();
+ gaint dequal(gadouble, gadouble, gadouble);
+ void *galloc(size_t,char *);
+ 

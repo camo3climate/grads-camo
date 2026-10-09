@@ -1,0 +1,19 @@
+Description: Fix  bug reading time units in netcdf files.
+Author: Nicolai Stange <nicolai.stange@zmaw.de>
+Last-Updated: 2011-01-07
+Bug-Debian: #587496.
+Forwarded: no
+
+Index: grads-2.2.1/src/gasdf.c
+===================================================================
+--- grads-2.2.1.orig/src/gasdf.c
++++ grads-2.2.1/src/gasdf.c
+@@ -859,7 +859,7 @@ utUnit timeunit ;
+ 	  if (!temp_str) {
+ 	    trunc_point = strlen(time_units) ;
+ 	  } else {
+-	    trunc_point = strlen(time_units)-strlen(temp_str)+1;
++	    trunc_point = strlen(time_units)-strlen(temp_str);
+ 	  }
+ 	  sz = trunc_point+1;
+           trunc_units = (char *) galloc(sz,"trunc_units");

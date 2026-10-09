@@ -1,0 +1,3 @@
+DSET ^noleap.nc
+OPTIONS 365_day_calendar
+TDEF time 3 LINEAR 00Z01JAN2024 1HR

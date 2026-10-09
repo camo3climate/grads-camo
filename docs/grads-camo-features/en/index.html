@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en" id="top">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>What You Can Do with GrADS CAMO | Display, Geographic Drawing, Analysis, Platforms</title>
+<meta name="description" content="GrADS CAMO features organized into four groups: display and design, geographic drawing, analysis and export, and platform compatibility.">
+<link rel="alternate" hreflang="ja" href="../ja/">
+<link rel="alternate" hreflang="en" href="../en/">
+<style>
+:root{
+  --bg:#f3f6f3; --paper:#fff; --ink:#172019; --muted:#657068;
+  --green:#245d3c; --green-dark:#163b27; --green-soft:#e7f0e9;
+  --blue-soft:#edf3f7; --amber-soft:#f7f1e6; --grey-soft:#f1f2f1;
+  --line:#d8e0d9; --code:#111612; --codeink:#eaf3eb;
+  --shadow:0 10px 30px rgba(26,45,31,.075);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic","Noto Sans JP","Segoe UI",Arial,sans-serif;
+  line-height:1.78;
+}
+a{color:var(--green);text-decoration-thickness:1px;text-underline-offset:3px}
+.hero{background:linear-gradient(135deg,#123522,#285f40 65%,#47795a);color:#fff;padding:70px 24px 62px}
+.hero-inner{max-width:1160px;margin:auto}
+.eyebrow{font-size:.88rem;letter-spacing:.09em;text-transform:uppercase;opacity:.8}
+h1{font-size:clamp(2.05rem,5vw,4.25rem);line-height:1.08;margin:.3em 0 .25em}
+.hero p{max-width:900px;font-size:1.08rem;opacity:.93}
+.badges,.quicklinks{display:flex;flex-wrap:wrap;gap:9px;margin-top:18px}
+.badge,.quicklinks a{border:1px solid rgba(255,255,255,.36);border-radius:999px;padding:6px 11px}
+.quicklinks a{color:#fff;text-decoration:none;background:rgba(255,255,255,.06)}
+.layout{max-width:1260px;margin:0 auto;display:grid;grid-template-columns:260px minmax(0,1fr);gap:28px;padding:32px 20px 78px}
+.toc{position:sticky;top:18px;align-self:start;background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:var(--shadow);max-height:calc(100vh - 36px);overflow:auto}
+.toc h2{font-size:1rem;margin:4px 7px 10px}
+.toc .group-label{font-size:.77rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:12px 8px 4px}
+.toc a{display:block;padding:7px 8px;border-radius:9px;text-decoration:none;color:var(--ink);font-size:.91rem}
+.toc a:hover{background:var(--green-soft)}
+main{min-width:0}
+.intro,.group,.refs{background:var(--paper);border:1px solid var(--line);border-radius:19px;padding:clamp(20px,3vw,38px);box-shadow:var(--shadow);margin-bottom:24px}
+.intro h2,.refs h2{margin-top:0}
+.group{scroll-margin-top:18px}
+.group-head{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:26px}
+.group-kicker{display:inline-block;font-weight:800;color:var(--green);font-size:.82rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px}
+.group h2{font-size:clamp(1.75rem,3vw,2.55rem);line-height:1.25;margin:.1em 0 .35em}
+.group-summary{font-size:1.06rem;color:#3e4b42;max-width:920px;margin:0}
+.overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:22px 0 6px}
+.overview a{display:block;background:#f8faf8;border:1px solid var(--line);border-radius:14px;padding:16px;text-decoration:none;color:var(--ink)}
+.overview a:hover{border-color:#b8cabd;background:var(--green-soft)}
+.overview strong{display:block;font-size:1.05rem;margin-bottom:5px}
+.overview span{font-size:.9rem;color:var(--muted)}
+.feature{padding:26px 0;border-top:1px solid var(--line)}
+.feature:first-of-type{border-top:0;padding-top:0}
+.feature-title-row{display:flex;gap:13px;align-items:flex-start}
+.xbadge{flex:none;display:inline-block;border:1px solid #cbd7cd;background:#f4f8f5;border-radius:999px;padding:3px 8px;font-size:.74rem;font-weight:750;color:#476250;white-space:nowrap;margin-top:5px}
+.feature h3{font-size:clamp(1.28rem,2.2vw,1.75rem);line-height:1.35;margin:0 0 .35em}
+.lead{margin-top:0;color:#435048;font-size:1.02rem}
+.gallery{display:grid;gap:15px;margin:18px 0}
+.gallery.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.gallery.one{grid-template-columns:minmax(0,1fr)}
+figure{margin:0;border:1px solid var(--line);border-radius:13px;overflow:hidden;background:#080808}
+figure img{display:block;width:100%;height:auto}
+figcaption{padding:9px 12px;background:#f7f9f7;color:#4e5952;font-size:.88rem;border-top:1px solid var(--line)}
+pre{background:var(--code);color:var(--codeink);padding:15px 17px;border-radius:12px;overflow:auto;line-height:1.55;font-size:.93rem;border:1px solid #29362c}
+code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
+p code,li code{background:#eef2ee;padding:.1em .32em;border-radius:5px;color:#263529}
+.callout{border-left:4px solid var(--green);padding:12px 16px;background:#f3f7f4;border-radius:8px;margin:18px 0}
+.links{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 2px}
+.links a{display:inline-block;border:1px solid #ccd9cf;border-radius:999px;padding:6px 11px;text-decoration:none;background:var(--green-soft);font-size:.9rem;font-weight:650}
+.group.display{border-top:6px solid #315f46}
+.group.geo{border-top:6px solid #496c82}
+.group.analysis{border-top:6px solid #92733b}
+.group.env{border-top:6px solid #666b68}
+.group.display .group-kicker{color:#315f46}
+.group.geo .group-kicker{color:#496c82}
+.group.analysis .group-kicker{color:#92733b}
+.group.env .group-kicker{color:#666b68}
+.refs ul{padding-left:1.2rem}
+.refs li{margin:.35em 0}
+footer{max-width:1260px;margin:0 auto;padding:0 20px 50px;color:var(--muted);font-size:.9rem}
+.toplink{text-align:right;margin-top:14px}
+.toplink a{font-size:.88rem}
+.small{font-size:.9rem;color:var(--muted)}
+@media(max-width:980px){
+  .layout{grid-template-columns:1fr}
+  .toc{position:relative;top:auto;max-height:none}
+  .overview{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:700px){
+  .gallery.two,.overview{grid-template-columns:1fr}
+  .hero{padding-top:46px}
+  .feature-title-row{display:block}
+  .xbadge{margin:0 0 7px}
+}
+</style>
+</head>
+<body>
+<header class="hero">
+<div class="hero-inner">
+<div class="eyebrow">GrADS CAMO / CAMO Climate System Research Group</div>
+<h1>What You Can Do with GrADS CAMO</h1>
+<p>GrADS CAMO is an unofficial downstream build based on GrADS 2.2.3. It aims to preserve familiar GrADS scripts while adding practical improvements for current systems, plotting, geographic annotation, colormaps, fonts, data export, and compatibility.</p>
+<div class="badges"><span class="badge">#grads</span><span class="badge">#CAMO</span><span class="badge">meteorology & climate</span></div>
+<div class="quicklinks">
+<a href="https://github.com/camo3climate/grads-camo">GitHub</a><a href="https://camo.fpark.tmu.ac.jp/grads-reference-en.html">GrADS Reference</a>
+<a href="https://camo.fpark.tmu.ac.jp/grads-camo-colormap-ja.html">Colormap Tool</a><a href="https://camo.fpark.tmu.ac.jp/">CAMO</a><a href="../ja/">日本語</a>
+</div>
+</div>
+</header>
+<div class="layout">
+<aside class="toc">
+<h2>Contents</h2>
+<div class="group-label">Display & design</div>
+<a href="#modern-theme">Modern theme</a><a href="#colormap">Colormaps</a><a href="#fontfamily">Fonts</a>
+<a href="#vector2-stream2">vector2 / stream2</a><a href="#panels">Panels</a><a href="#export">PNG / SVG / PDF</a>
+<div class="group-label">Geographic drawing</div>
+<a href="#georec">georec / georecf</a><a href="#geocirc">geocirc / geocircf</a><a href="#geovec">geovec</a><a href="#geodesic-circle">Distance circles</a>
+<div class="group-label">Analysis & export</div>
+<a href="#txtwrite">txtwrite</a><a href="#re">re()</a><a href="#help">help camo</a>
+<div class="group-label">Platforms</div>
+<a href="#platforms">Linux / macOS</a><a href="#libraries">Libraries / packaging</a><a href="#compatibility">Script compatibility</a>
+<div class="group-label">Resources</div><a href="#links">Related links</a>
+</aside>
+<main>
+<section class="intro"><h2>camo26.2</h2><p>Source buildkit available; prebuilt RPM/DEB downloads are currently unavailable.</p><p>Seven Linux targets passed installation, 12 batch suites and clean-runtime startup: AlmaLinux 8/9/10, Fedora 44, Debian 13, Ubuntu 24.04/26.04. HDF4 is enabled on all seven. Apple Silicon macOS uses a MacPorts source recipe; formal camo26.2 Port installation remains pending. Mint and Homebrew are excluded. Traditional EPS/PDF rotation and margins are retained; interactive X11 remains untested.</p><p><a href="https://github.com/camo3climate/grads-camo/releases/tag/v2.2.3-camo26.2">Download</a> / <a href="https://github.com/camo3climate/grads-camo/blob/main/docs/INSTALL-CAMO26.2-JA.md">Install / 導入手順</a> / <a href="https://github.com/camo3climate/grads-camo/blob/main/docs/VALIDATION-CAMO26.2.md">Validation</a></p></section>
+<section class="intro">
+<h2>For the web version, the features are grouped by purpose</h2>
+<p>The original X series introduced one feature at a time as items #1 through #12. That order works well for short social posts, but a web page is easier to understand when the changes are grouped into <strong>Display & design / Geographic drawing / Analysis & export / Platforms & compatibility</strong>. Small X-series labels are retained so visitors arriving from the posts can still map each item back to the original sequence.</p>
+<p>The central idea is not to create a new plotting system from scratch. GrADS CAMO is intended to preserve long-lived GrADS workflows and add a set of practical improvements where current research environments make the older software awkward.</p>
+<div class="overview">
+<a href="#display"><strong>Display & design</strong><span>theme / colormap / font / vector2 / panels / export</span></a>
+<a href="#geo"><strong>Geographic drawing</strong><span>georec / geocirc / geovec / geodesic circle</span></a>
+<a href="#analysis"><strong>Analysis & export</strong><span>txtwrite / re() / built-in help</span></a>
+<a href="#environment"><strong>Platforms & compatibility</strong><span>Linux / macOS / libraries / old scripts</span></a>
+</div>
+</section>
+
+<section id="display" class="group display">
+  <div class="group-head">
+    <div class="group-kicker">Group 1</div>
+    <h2>Display & design</h2>
+    <p class="group-summary">Improve the appearance and presentation of GrADS figures without changing the basic workflow: themes, palettes, fonts, vector/streamline visibility, panel layouts, and hardcopy export.</p>
+  </div>
+  
+<article id="modern-theme" class="feature">
+  <div class="feature-title-row"><span class="xbadge">X series #1</span><div>
+    <h3>Modern theme: update the appearance without rewriting normal GrADS scripts</h3>
+    <p class="lead">A single theme controls several defaults that affect the first impression of a map: aspect ratio, grid/map presentation, the default palette, and the default 2-D display mode.</p>
+  </div></div>
+  
+  <div class="gallery two"><figure><img src="../img/U002_classic_default.png" alt="Classic theme"><figcaption>Classic theme</figcaption></figure><figure><img src="../img/U003_modern_default.png" alt="Modern theme"><figcaption>Modern theme</figcaption></figure></div>
+<pre><code>&#x27;sdfopen file.nc&#x27;
+&#x27;set theme modern&#x27;
+&#x27;d mag(ugrd_10mabovegr,vgrd_10mabovegr)&#x27;
+&#x27;draw title Modern theme&#x27;
+&#x27;gxprint figure.png&#x27;</code></pre>
+<p>The CAMO <code>modern</code> theme changes the latitude/longitude aspect factor from 1.2 to 1.0 and uses a lighter map/grid presentation. It selects <code>cividis</code> as the default rainbow palette; the CAMO startup defaults also use <code>gxout shade2</code> for a 2-D grid and increase the default X/Y tick-label size from 0.11 to 0.15.</p>
+<p>The traditional behavior is still available. <code>set theme classic</code> restores the classic theme, and ordinary GrADS display commands remain available. The intention is to add a useful modern preset, not to make old scripts obsolete.</p>
+<div class="links"><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/CHANGES-FROM-UPSTREAM.md">Implementation and upstream changes</a><a href="https://camo.fpark.tmu.ac.jp/grads-reference-en.html">GrADS/OpenGrADS Reference</a></div>
+</article>
+
+<article id="colormap" class="feature">
+  <div class="feature-title-row"><span class="xbadge">X series #5</span><div>
+    <h3>Select colormaps by name</h3>
+    <p class="lead">Use familiar palette names, including reversed forms, instead of defining every RGB entry manually.</p>
+  </div></div>
+  
+  <div class="gallery one"><figure><img src="../img/camo05.png" alt="colormap tool"><figcaption>CAMO/GrADS colormap and colorbar generator</figcaption></figure></div>
+<pre><code>&#x27;set rgbmap RdBu&#x27;
+&#x27;set rgbmap RdBu_r&#x27;
+&#x27;set rgbmap RdBu reverse&#x27;</code></pre>
+<p>GrADS CAMO includes 13-color RGB tables sampled from Matplotlib built-in colormaps, covering perceptually uniform, sequential, diverging, cyclic, and common legacy-style choices. <code>NAME_r</code> and the <code>reverse</code> option both reverse the order.</p>
+<p>The web-based colormap tool provides a visual browser and can generate GrADS color/level settings. The current interface is Japanese, but the generated GrADS commands are language independent.</p>
+<div class="links"><a href="https://camo.fpark.tmu.ac.jp/grads-camo-colormap-ja.html">Colormap/colorbar generator</a><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/CHANGES-FROM-UPSTREAM.md">Palette implementation notes</a></div>
+</article>
+
+<article id="fontfamily" class="feature">
+  <div class="feature-title-row"><span class="xbadge">X series #6</span><div>
+    <h3>Choose installed system fonts by family name</h3>
+    <p class="lead">Make GrADS figures fit more naturally beside figures from other plotting software.</p>
+  </div></div>
+  
+  <div class="gallery one"><figure><img src="../img/camo06.png" alt="font example"><figcaption>System font family example</figcaption></figure></div>
+<pre><code>&#x27;set fontfamily IPAexGothic&#x27;
+&#x27;set fontfamily Helvetica&#x27;
+&#x27;set fontfamily DejaVu Sans&#x27;</code></pre>
+<p><code>set fontfamily</code> selects a font through Cairo/fontconfig. GrADS CAMO does not bundle font files; the requested family must be installed on the host system.</p>
+<p>This is useful for papers, posters, and slides where typography across several plotting tools should be consistent while the rest of the GrADS workflow remains unchanged.</p>
+<div class="links"><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/CHANGES-FROM-UPSTREAM.md">Font-family specification</a><a href="https://camo.fpark.tmu.ac.jp/grads-reference-en.html">General text/drawing reference</a></div>
+</article>
+
+<article id="vector2-stream2" class="feature">
+  <div class="feature-title-row"><span class="xbadge">X series #7</span><div>
+    <h3>vector2 / stream2: improve contrast over shaded fields</h3>
+    <p class="lead">A second drawing pass keeps vectors and streamlines readable when the background changes from dark to light.</p>
+  </div></div>
+  
+  <div class="gallery two"><figure><img src="../img/camo07a.png" alt="vector2"><figcaption><code>set gxout vector2</code></figcaption></figure><figure><img src="../img/camo07b.png" alt="stream2"><figcaption><code>set gxout stream2</code></figcaption></figure></div>
+<pre><code>&#x27;set gxout vector2&#x27;
+&#x27;d u;v&#x27;
+
+&#x27;set gxout stream2&#x27;
+&#x27;d u;v&#x27;</code></pre>
+<p>These modes retain the upstream GrADS vector/stream algorithms but draw a semi-transparent background-colored outline before the main vectors or streamlines. This reduces the usual problem of white or dark lines disappearing over parts of a shaded map.</p>
+<p>The original <code>vector</code> and <code>stream</code> modes are unchanged, so the CAMO modes can be selected only where they help.</p>
+<div class="links"><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/CHANGES-FROM-UPSTREAM.md">vector2 / stream2 details</a></div>
+</article>
+
+<article id="panels" class="feature">
+  <div class="feature-title-row"><span class="xbadge">X series #8</span><div>
+    <h3>Simple multi-panel layouts</h3>
+    <p class="lead">Create common 2×2, 2×3, and similar layouts without hand-calculating a separate plot area for every panel.</p>
+  </div></div>
+  
+  <div class="gallery one"><figure><img src="../img/camo08.png" alt="panels"><figcaption>2 × 2 panel example</figcaption></figure></div>
+<pre><code>&#x27;set panels 2 2&#x27;
+&#x27;set panel 1&#x27;
+&#x27;d u&#x27;
+&#x27;set panel 2&#x27;
+&#x27;d v&#x27;
+&#x27;set panel 3&#x27;
+&#x27;d mag(u,v)&#x27;
+&#x27;set panel 4&#x27;
+&#x27;d hgt&#x27;
+&#x27;set panels off&#x27;</code></pre>
+<p><code>set panels</code> defines a simple row/column viewport layout, and <code>set panel</code> selects the destination panel. Traditional <code>set parea</code> and <code>set vpage</code> remain available when full manual control is needed.</p>
+<p>The feature is intentionally modest, but it removes repetitive page-coordinate arithmetic from a task that appears constantly in climate and meteorological analysis.</p>
+<div class="links"><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/CHANGES-FROM-UPSTREAM.md">Panel implementation notes</a></div>
+</article>
+
+<article id="export" class="feature">
+  <div class="feature-title-row"><span class="xbadge">Web extra</span><div>
+    <h3>Compact PNG, transparent PNG, PDF, and SVG export</h3>
+    <p class="lead">Use concise hardcopy commands for web graphics, overlays, scalable office-document figures, and print output.</p>
+  </div></div>
+  
+  <pre><code>&#x27;export figure.png&#x27;
+&#x27;export figure.png transparent&#x27;
+&#x27;export figure.png scale 2&#x27;
+&#x27;export figure.png width 1600&#x27;
+&#x27;export figure.pdf&#x27;
+&#x27;export figure.svg&#x27;</code></pre>
+<p><code>export</code> is a compact CAMO entry point to the hardcopy path, including transparent PNG and simple size/scale controls. SVG and PDF can be used where vector output is preferable.</p>
+<p><code>gxprint</code> remains the canonical upstream GrADS hardcopy command. The added command is meant to make common output cases shorter, not to replace the established mechanism.</p>
+<div class="links"><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/CHANGES-FROM-UPSTREAM.md">Export/hardcopy changes</a><a href="https://camo.fpark.tmu.ac.jp/grads-reference-en.html">General GrADS output reference</a></div>
+</article>
+
+  <div class="toplink"><a href="#top">↑ Back to top</a></div>
+</section>
+
+<section id="geo" class="group geo">
+  <div class="group-head">
+    <div class="group-kicker">Group 2</div>
+    <h2>Geographic drawing</h2>
+    <p class="group-summary">Add annotations using the coordinates scientists actually use: longitude, latitude, eastward/northward vectors, and physical distance on the globe.</p>
+  </div>
+  
+<article id="georec" class="feature">
+  <div class="feature-title-row"><span class="xbadge">X series #2</span><div>
+    <h3>Draw geographic rectangles with georec / georecf</h3>
+    <p class="lead">Specify the study domain in longitude and latitude instead of page x/y coordinates.</p>
+  </div></div>
+  
+  <div class="gallery two"><figure><img src="../img/U018_georec.png" alt="georec"><figcaption><code>draw georec 95 5 145 35</code></figcaption></figure><figure><img src="../img/U019_georecf.png" alt="georecf"><figcaption><code>draw georecf 105 10 135 32</code></figcaption></figure></div>
+<pre><code>&#x27;set line 1 1 8&#x27;
+&#x27;draw georec 95 5 145 35&#x27;
+&#x27;draw georecf 105 10 135 32&#x27;</code></pre>
+<p><code>georec</code>と<code>rec</code>、<code>vector2</code>と<code>vector</code>、<code>export</code>と<code>gxprint</code>は、それぞれ別のコマンドとして利用できます。</p>
+<p>Rectangle edges are interpolated before projection using the GrADS map-polygon machinery, so nonlinear projections are handled more naturally than simply connecting four already-projected corners.</p>
+<div class="links"><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/CHANGES-FROM-UPSTREAM.md">Geographic rectangle implementation</a><a href="https://camo.fpark.tmu.ac.jp/grads-reference-en.html">Map/projection reference</a></div>
+</article>
+
+<article id="geocirc" class="feature">
+  <div class="feature-title-row"><span class="xbadge">X series #3</span><div>
+    <h3>Draw geographic circles with geocirc / geocircf</h3>
+    <p class="lead">Place a marker at a station, cyclone center, or analysis point using lon/lat directly.</p>
+  </div></div>
+  
+  <div class="gallery one"><figure><img src="../img/U012_geocirc.png" alt="geocirc"><figcaption><code>draw geocirc 130 30</code></figcaption></figure></div>
+<pre><code>&#x27;set line 1 1 8&#x27;
+&#x27;draw geocirc 130 30&#x27;
+&#x27;draw geocircf 130 30&#x27;</code></pre>
+<p>Without a distance argument, <code>geocirc</code> is a fixed-size map annotation centered at the supplied geographic coordinate. <code>geocircf</code> is the filled form.</p>
+<p>The purpose is simple: when the scientific description is “mark 130°E, 30°N”, the script can use those values directly rather than performing a separate world-to-page conversion.</p>
+<div class="links"><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/CHANGES-FROM-UPSTREAM.md">Geographic circle details</a></div>
+</article>
+
+<article id="geovec" class="feature">
+  <div class="feature-title-row"><span class="xbadge">X series #4</span><div>
+    <h3>Draw projection-aware vectors at geographic locations</h3>
+    <p class="lead">Specify a lon/lat point and eastward/northward vector components.</p>
+  </div></div>
+  
+  <div class="gallery one"><figure><img src="../img/U009_geovec.png" alt="geovec"><figcaption><code>draw geovec 125 25 20 10</code></figcaption></figure></div>
+<pre><code>&#x27;set line 1 1 8&#x27;
+&#x27;set arrscl 1.2 20&#x27;
+&#x27;draw geovec 125 25 20 10&#x27;</code></pre>
+<p><code>draw geovec LON LAT U V</code> treats U as eastward and V as northward. It converts that direction to the active map projection using a local projected derivative.</p>
+<p>Vector length remains controlled by <code>set arrscl</code>, separating the direction transformation from magnitude scaling and avoiding unwanted location-dependent length changes on non-conformal maps.</p>
+<div class="links"><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/CHANGES-FROM-UPSTREAM.md">Projection handling in geovec</a></div>
+</article>
+
+<article id="geodesic-circle" class="feature">
+  <div class="feature-title-row"><span class="xbadge">X series #11</span><div>
+    <h3>Draw geodesic circles using a radius in kilometers</h3>
+    <p class="lead">Represent equal distance on the sphere rather than a circle that merely looks circular on the page.</p>
+  </div></div>
+  
+  <div class="gallery two"><figure><img src="../img/camo11.png" alt="large geodesic"><figcaption><code>draw geocirc 130 30 5500 km</code></figcaption></figure><figure><img src="../img/U014_geocirc_km_robinson.png" alt="Robinson geodesic circle"><figcaption>1200-km geodesic circle on a Robinson projection</figcaption></figure></div>
+<pre><code>&#x27;draw geocirc 130 30 500 km&#x27;
+&#x27;draw geocirc 130 30 5500 km&#x27;
+&#x27;draw geocircf 130 30 1200 km&#x27;</code></pre>
+<p>Adding <code>km</code> creates a 72-segment geodesic circle on a spherical Earth before the points are projected. This is useful for cyclone-centered analysis, observational influence radii, or any threshold defined by physical distance.</p>
+<p>On Robinson and other nonlinear projections the result may not look circular on the page. That is expected: the geometry is defined on the globe first.</p>
+<div class="links"><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/CHANGES-FROM-UPSTREAM.md">Geodesic-circle implementation</a></div>
+</article>
+
+  <div class="toplink"><a href="#top">↑ Back to top</a></div>
+</section>
+
+<section id="analysis" class="group analysis">
+  <div class="group-head">
+    <div class="group-kicker">Group 3</div>
+    <h2>Analysis, export & compatibility tools</h2>
+    <p class="group-summary">Connect GrADS calculations to other environments, keep common OpenGrADS regridding scripts useful, and make CAMO-specific commands easier to discover.</p>
+  </div>
+  
+<article id="txtwrite" class="feature">
+  <div class="feature-title-row"><span class="xbadge">X series #9</span><div>
+    <h3>Export GrADS results directly to CSV or plain text with txtwrite</h3>
+    <p class="lead">Use GrADS for data access and calculation, then hand a compact result to Python, R, Excel, gnuplot, or another tool.</p>
+  </div></div>
+  
+  <pre><code>&#x27;txtwrite -csv -header out.csv tmp&#x27;
+&#x27;txtwrite -csv -header -undef -9999 out.csv tmp&#x27;</code></pre>
+<p><code>txtwrite [-csv] [-header] [-undef VALUE] FILE EXPR</code> provides dependency-free text export for one- and two-dimensional grid expressions. The default is space-separated text; <code>-csv</code> selects comma-separated output.</p>
+<p>Coordinate columns follow the varying dimensions: lon/lat grids can produce <code>lon,lat,value</code>, while a time series can produce <code>time,value</code>. Station data and higher-dimensional expression results are deliberately outside the scope of this first text writer.</p>
+<div class="links"><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/CHANGES-FROM-UPSTREAM.md">Exact txtwrite specification</a><a href="https://camo.fpark.tmu.ac.jp/grads-reference-en.html">GrADS function/output reference</a></div>
+</article>
+
+<article id="re" class="feature">
+  <div class="feature-title-row"><span class="xbadge">X series #10</span><div>
+    <h3>Limited compatibility for the widely used OpenGrADS-style re()</h3>
+    <p class="lead">Keep older regridding scripts useful for common regular lon/lat cases.</p>
+  </div></div>
+  
+  <div class="gallery one"><figure><img src="../img/camo10.png" alt="re examples"><figcaption>Regridding to 2°, 4°, and 10° grids</figcaption></figure></div>
+<pre><code>&#x27;d re(u,2.0,2.0)&#x27;
+&#x27;d re(u,4.0,4.0)&#x27;
+&#x27;d re(u,10.0,10.0)&#x27;</code></pre>
+<p>The CAMO <code>re()</code> implementation is a limited compatibility wrapper around the GrADS 2.2.3 <code>lterp()</code> interpolation core. It supports common OpenGrADS-style destination-grid arguments and the <code>bl/bilin</code>, <code>bs/bessel</code>, <code>ba/aave</code>, and <code>ma,FRACTION</code> methods.</p>
+<p>When no method is specified, it follows the OpenGrADS convention of area averaging for a coarser output grid and Bessel interpolation for a finer output grid. Vote interpolation and Gaussian-grid options are explicitly rejected pending separate numerical validation.</p>
+<div class="links"><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/CHANGES-FROM-UPSTREAM.md">Supported and unsupported re() options</a><a href="https://camo.fpark.tmu.ac.jp/grads-reference-en.html">GrADS/OpenGrADS Reference</a></div>
+</article>
+
+<article id="help" class="feature">
+  <div class="feature-title-row"><span class="xbadge">Web extra</span><div>
+    <h3>Check CAMO additions from the GrADS prompt</h3>
+    <p class="lead">The new commands do not have to live entirely in your memory.</p>
+  </div></div>
+  
+  <pre><code>&#x27;help camo&#x27;
+&#x27;help color&#x27;
+&#x27;help gxout&#x27;
+&#x27;help text&#x27;
+&#x27;help geo&#x27;
+&#x27;help export&#x27;</code></pre>
+<p>The interactive help summary includes compact CAMO topics for themes, palettes, panels, geographic drawing, fonts, and export. The CAMO identifier is also shown at startup and in <code>q config</code>.</p>
+<p>For ordinary GrADS and OpenGrADS commands, functions, and utilities, the separate web references provide a searchable companion to the CAMO-specific help.</p>
+<div class="links"><a href="https://camo.fpark.tmu.ac.jp/grads-reference-en.html">English GrADS/OpenGrADS Reference</a><a href="https://camo.fpark.tmu.ac.jp/grads-reference-ja.html">Japanese Reference</a><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/CHANGES-FROM-UPSTREAM.md">CAMO help changes</a></div>
+</article>
+
+  <div class="toplink"><a href="#top">↑ Back to top</a></div>
+</section>
+
+<section id="environment" class="group env">
+  <div class="group-head">
+    <div class="group-kicker">Group 4</div>
+    <h2>Platforms & compatibility</h2>
+    <p class="group-summary">Keep GrADS 2.2.3 buildable and usable with current compilers, libraries, Linux distributions, and Apple Silicon macOS while preserving long-lived scripts.</p>
+  </div>
+  
+<article id="platforms" class="feature">
+  <div class="feature-title-row"><span class="xbadge">X series #12</span><div>
+    <h3>Keep GrADS 2.2.3 usable on current Linux and macOS systems</h3>
+    <p class="lead">A large fraction of the work is invisible in screenshots: compilers, libraries, packaging, and reproducible builds.</p>
+  </div></div>
+  
+  <p>camo26.2 passed build, installation, 12/12 batch suites and clean-runtime startup on <strong>AlmaLinux 8/9/10, Fedora 44, Debian 13 and Ubuntu 24.04/26.04</strong>. Linux is x86_64/amd64; EL10 requires x86-64-v3. Native Apple Silicon source/batch checks use MacPorts libraries; formal camo26.2 Port installation remains pending.</p>
+<p>The downstream patches address issues exposed by current GCC versions, modern HDF5 APIs, Debian/Ubuntu serial-HDF5 layouts, current g2c/GRIB2 interfaces, UDUNITS2 include paths, libpng16, shapelib, and related system-library changes.</p>
+<div class="callout"><strong>Core idea:</strong> keep long-lived GrADS workflows usable on contemporary systems with as little disruption as practical.</div>
+<div class="links"><a href="https://github.com/camo3climate/grads-camo">Current repository status</a><a href="https://github.com/camo3climate/grads-camo/blob/main/ALMA9-QUICKSTART.md">AlmaLinux 9 Quick Start</a><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/BUILD-UBUNTU.md">Ubuntu build guide</a><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/BUILD-MACOS-ARM64.md">Apple Silicon macOS guide</a></div>
+</article>
+
+<article id="libraries" class="feature">
+  <div class="feature-title-row"><span class="xbadge">Web extra</span><div>
+    <h3>System-library linkage, packaging, and compatibility patches</h3>
+    <p class="lead">Move away from old private supplement-library assumptions and toward normal system packages and filesystem layouts.</p>
+  </div></div>
+  
+  <p>The packaging work uses system libraries and FHS-style installation paths. Build requirements cover components such as Cairo, GD, NetCDF, HDF4/HDF5, GRIB2, GeoTIFF, shapefile, and X11 where enabled by the target package.</p>
+<p>RPM disables DAP/GADAP. Debian/Ubuntu enable gridded OPeNDAP and disable GADAP. HDF4 is enabled on all seven Linux targets, including Ubuntu 24.04. Enabled interfaces do not certify independent HDF4/HDF5 fixtures or remote OPeNDAP access. Check <code>grads -blc "q config"</code> and the validation matrix.</p>
+<div class="links"><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/CHANGES-FROM-UPSTREAM.md">Complete upstream-change inventory</a><a href="https://github.com/camo3climate/grads-camo">README and package layout</a></div>
+</article>
+
+<article id="compatibility" class="feature">
+  <div class="feature-title-row"><span class="xbadge">Web extra</span><div>
+    <h3>Preserve existing scripts and add CAMO syntax only where needed</h3>
+    <p class="lead">New features coexist with ordinary GrADS commands instead of forcing a new scripting dialect.</p>
+  </div></div>
+  
+  <pre><code>&#x27;sdfopen file.nc&#x27;
+&#x27;set lon 100 160&#x27;
+&#x27;set lat 10 50&#x27;
+&#x27;d tmp&#x27;
+&#x27;gxprint figure.png&#x27;</code></pre>
+<p>Normal GrADS scripts such as the example above do not need to be rewritten into CAMO-specific syntax. Features such as <code>set theme modern</code>, <code>set rgbmap</code>, <code>set fontfamily</code>, or <code>set gxout vector2</code> can be added selectively.</p>
+<p><code>georec</code>と<code>rec</code>、<code>vector2</code>と<code>vector</code>、<code>export</code>と<code>gxprint</code>は、それぞれ別のコマンドとして利用できます。</p>
+<div class="links"><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/CHANGES-FROM-UPSTREAM.md">Design and compatibility changes</a><a href="https://github.com/camo3climate/grads-camo">Source and packages</a></div>
+</article>
+
+  <div class="toplink"><a href="#top">↑ Back to top</a></div>
+</section>
+
+<section id="links" class="refs">
+<h2>Related links</h2>
+<ul>
+<li><a href="https://github.com/camo3climate/grads-camo">GrADS CAMO on GitHub</a> — source, packaging, and current platform status</li>
+<li><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/CHANGES-FROM-UPSTREAM.md">Changes from upstream GrADS 2.2.3</a> — inventory of downstream patches and compatibility changes</li>
+<li><a href="https://camo.fpark.tmu.ac.jp/grads-reference-en.html">GrADS / OpenGrADS Reference (English)</a></li>
+<li><a href="https://camo.fpark.tmu.ac.jp/grads-reference-ja.html">GrADS / OpenGrADS Reference (Japanese)</a></li>
+<li><a href="https://camo.fpark.tmu.ac.jp/grads-camo-colormap-ja.html">CAMO/GrADS Colormap and Colorbar Generator</a></li>
+<li><a href="https://github.com/camo3climate/grads-camo/blob/main/ALMA9-QUICKSTART.md">AlmaLinux 9 Quick Start</a></li>
+<li><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/BUILD-UBUNTU.md">Ubuntu build guide</a></li>
+<li><a href="https://github.com/camo3climate/grads-camo/blob/main/docs/BUILD-MACOS-ARM64.md">Apple Silicon macOS + MacPorts build guide</a></li>
+<li><a href="https://camo.fpark.tmu.ac.jp/">CAMO Climate System Research Group</a></li>
+</ul>
+<p class="small">GrADS CAMO is not an official GrADS/COLA/George Mason University release. It is an unofficial downstream build based on GrADS 2.2.3, with CAMO-maintained patches, packaging, and additional features.</p>
+</section>
+</main>
+</div>
+<footer>GrADS CAMO feature guide — grouped web edition.</footer>
+</body>
+</html>

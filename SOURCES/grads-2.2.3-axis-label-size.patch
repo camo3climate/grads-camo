@@ -1,0 +1,18 @@
+Description: enlarge default x/y axis tick label size
+Author: CAMO packaging maintainers
+Forwarded: no
+Last-Update: 2026-07-05
+
+--- grads-2.2.3/src/grads.c
++++ grads-2.2.3/src/grads.c
+@@ -479,8 +479,8 @@
+   gcmn.ylcol = 1;
+   gcmn.xlthck = 4;
+   gcmn.ylthck = 4;
+-  gcmn.xlsiz = 0.11;
+-  gcmn.ylsiz = 0.11;
++  gcmn.xlsiz = 0.15;
++  gcmn.ylsiz = 0.15;
+   gcmn.xlflg = 0;
+   gcmn.ylflg = 0;
+   gcmn.xtick = 1;

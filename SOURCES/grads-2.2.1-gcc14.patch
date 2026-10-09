@@ -1,0 +1,47 @@
+Description: Changes needed for gcc-14 (no-implicit-declarations)
+Author: Alastair McKinstry <mckinstry@debian.org>
+Last-Updated: 2024-08-18
+Forwarded: no
+
+--- a/src/gagui.c
++++ b/src/gagui.c
+@@ -86,7 +86,9 @@
+ static char **CmdWinList;   /* Command buffer */
+ static Widget Cmd_window, CmdExpr_window, CmdList_window, CmdStr_window;
+ 
+-/*---------------------------------------------------------------------*
++int Default_GUI(int argc, char **argv, void *data);
++
++/*---------------------------------------------------------------------*/
+ 
+ /*
+  * This is the GaGUI entry point. Return is thru the quit button.
+--- a/src/gsgui.c
++++ b/src/gsgui.c
+@@ -41,6 +41,8 @@
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <unistd.h>
++#include <ctype.h>
+ 
+ #include "libsx.h"
+ #if USEFREQ == 1
+@@ -71,6 +73,8 @@
+ #define DEBUGGUI        20
+ #define CHDIR           21
+ 
++int Custom_GUI ( char *fname );
++
+ /* Widget function table */
+ struct Func_Table {
+     char *name;
+@@ -457,7 +461,7 @@
+       UserColors[4].color = BLUE;
+       UserColors[5].color = YELLOW;
+       icolors = 5;
+-      if(!name) return;
++      if(!name) return 0;
+    }
+ 
+    icolors++;

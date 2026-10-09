@@ -1,0 +1,15 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: GrADS
+Source: https://github.com/j-m-adams/GrADS
+
+Files: *
+Copyright: 1988-2022 George Mason University and upstream contributors
+License: GPL-2.0-only
+
+Files: debian/*
+Copyright: 2026 CAMO packaging maintainers
+License: GPL-2.0-only
+
+License: GPL-2.0-only
+ The complete GNU GPL version 2 text is available on Debian and Ubuntu systems
+ at /usr/share/common-licenses/GPL-2.

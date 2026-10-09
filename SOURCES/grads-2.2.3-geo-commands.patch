@@ -1,0 +1,122 @@
+Description: add geographic circle, rectangle, and vector draw commands
+Author: CAMO packaging maintainers
+Forwarded: no
+Last-Update: 2026-06-24
+
+--- a/src/gauser.c
++++ b/src/gauser.c
+@@ -1558,3 +1558,114 @@
+     return (1);
++  }
++  if (cmpwrd("geovec",oper)) {
++    if (!gadraw_geo_ready(pcm)) return 1;
++    if ((cmd = nxtwrd(cmd)) == NULL || getdbl(cmd,&lon) == NULL) goto errgeovec;
++    if ((cmd = nxtwrd(cmd)) == NULL || getdbl(cmd,&lat) == NULL) goto errgeovec;
++    if ((cmd = nxtwrd(cmd)) == NULL || getdbl(cmd,&geou) == NULL) goto errgeovec;
++    if ((cmd = nxtwrd(cmd)) == NULL || getdbl(cmd,&geov) == NULL) goto errgeovec;
++    if (nxtwrd(cmd)!=NULL || !isfinite(lon) || !isfinite(lat) ||
++        lat < -90.0 || lat > 90.0 || !isfinite(geou) || !isfinite(geov)) goto errgeovec;
++    lon = gadraw_geo_lon(lon,pcm);
++    mag = hypot(geou,geov);
++    if (mag==0.0) return 0;
++    if (gadraw_geo_vector_angle(lon,lat,geou,geov,&x,&y,&dir)) {
++      gaprnt(0,"DRAW GEOVEC error: Unable to determine projected direction\n");
++      return 1;
++    }
++    if (pcm->arrflg) {
++      asiz = pcm->arrsiz;
++      if (pcm->arrmag>0.0) asiz = asiz*mag/pcm->arrmag;
++    } else {
++      asiz = 0.5;
++    }
++    if (!isfinite(asiz) || asiz<=0.0) goto errgeovec;
++    gxclip(pcm->xsiz1,pcm->xsiz2,pcm->ysiz1,pcm->ysiz2);
++    gxcolr(pcm->lincol);
++    gxwide(pcm->linthk);
++    gxstyl(pcm->linstl);
++    gaarrw(x,y,dir,asiz,pcm->ahdsiz);
++    gxclip(0.0,pcm->xsiz,0.0,pcm->ysiz);
++    return 0;
++
++    errgeovec:
++    gaprnt(0,"DRAW error: Syntax is DRAW GEOVEC lon lat u v\n");
++    return 1;
+   }
++
++  if (cmpwrd("geocirc",oper) || cmpwrd("geocircf",oper)) {
++    if (!gadraw_geo_ready(pcm)) return 1;
++    if ((cmd = nxtwrd(cmd)) == NULL || getdbl(cmd,&lon) == NULL) goto errgeocirc;
++    if ((cmd = nxtwrd(cmd)) == NULL || getdbl(cmd,&lat) == NULL) goto errgeocirc;
++    r = 0.12;
++    kmflg = 0;
++    if ((cmd = nxtwrd(cmd)) != NULL) {
++      if (getdbl(cmd,&r) == NULL) goto errgeocirc;
++      if ((cmd = nxtwrd(cmd)) != NULL) {
++        if (!cmpwrd("km",cmd) || nxtwrd(cmd)!=NULL) goto errgeocirc;
++        kmflg = 1;
++      }
++    }
++    if (!isfinite(lon) || !isfinite(lat) || !isfinite(r) ||
++        lat < -90.0 || lat > 90.0 || r <= 0.0) goto errgeocirc;
++    fill = cmpwrd("geocircf",oper);
++    lon = gadraw_geo_lon(lon,pcm);
++    gxcolr(pcm->lincol);
++    if (!kmflg) {
++      gxconv(lon,lat,&x,&y,2);
++      gxclip(pcm->xsiz1,pcm->xsiz2,pcm->ysiz1,pcm->ysiz2);
++      gxwide(pcm->linthk);
++      gxstyl(pcm->linstl);
++      gxcirc(x,y,r,fill);
++      gxclip(0.0,pcm->xsiz,0.0,pcm->ysiz);
++      return 0;
++    }
++
++    if (r > 20015.0) goto errgeocirc;
++    delta = r/6371.0088;
++    latr = lat*M_PI/180.0;
++    lonr = lon*M_PI/180.0;
++    prevlon = lon;
++    for (i=0; i<=72; i++) {
++      bearing = (gadouble)i*5.0*M_PI/180.0;
++      newlat = asin(sin(latr)*cos(delta) + cos(latr)*sin(delta)*cos(bearing));
++      newlon = lonr + atan2(sin(bearing)*sin(delta)*cos(latr),
++                            cos(delta)-sin(latr)*sin(newlat));
++      newlon = newlon*180.0/M_PI;
++      while (newlon-prevlon > 180.0) newlon -= 360.0;
++      while (newlon-prevlon < -180.0) newlon += 360.0;
++      geoxy[i*2] = newlon;
++      geoxy[i*2+1] = newlat*180.0/M_PI;
++      prevlon = newlon;
++    }
++    return gadraw_geo_polygon(geoxy,73,fill,pcm);
++
++    errgeocirc:
++    gaprnt(0,"DRAW error: Syntax is DRAW GEOCIRC[F] lon lat [radius [km]]\n");
++    return 1;
++  }
++
++  if (cmpwrd("georec",oper) || cmpwrd("georecf",oper)) {
++    if (!gadraw_geo_ready(pcm)) return 1;
++    if ((cmd = nxtwrd(cmd)) == NULL || getdbl(cmd,&lon) == NULL) goto errgeorec;
++    if ((cmd = nxtwrd(cmd)) == NULL || getdbl(cmd,&lat) == NULL) goto errgeorec;
++    if ((cmd = nxtwrd(cmd)) == NULL || getdbl(cmd,&lon2) == NULL) goto errgeorec;
++    if ((cmd = nxtwrd(cmd)) == NULL || getdbl(cmd,&lat2) == NULL) goto errgeorec;
++    if (nxtwrd(cmd)!=NULL || !isfinite(lon) || !isfinite(lon2) ||
++        !isfinite(lat) || !isfinite(lat2) || lat < -90.0 || lat > 90.0 ||
++        lat2 < -90.0 || lat2 > 90.0 || lon==lon2 || lat==lat2) goto errgeorec;
++    lon = gadraw_geo_lon(lon,pcm);
++    lon2 = gadraw_geo_lon(lon2,pcm);
++    geoxy[0]=lon;  geoxy[1]=lat;
++    geoxy[2]=lon2; geoxy[3]=lat;
++    geoxy[4]=lon2; geoxy[5]=lat2;
++    geoxy[6]=lon;  geoxy[7]=lat2;
++    geoxy[8]=lon;  geoxy[9]=lat;
++    fill = cmpwrd("georecf",oper);
++    return gadraw_geo_polygon(geoxy,5,fill,pcm);
++
++    errgeorec:
++    gaprnt(0,"DRAW error: Syntax is DRAW GEOREC[F] lon1 lat1 lon2 lat2\n");
++    return 1;
++  }
++
+   if (cmpwrd("circ",oper) || cmpwrd("circf",oper)) {

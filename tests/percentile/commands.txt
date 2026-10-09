@@ -1,0 +1,25 @@
+open percentile-test.ctl
+set gxout print
+set prnopts %g 1 1
+set x 1
+set y 1
+set z 1
+set t 3
+d percentile(v,e=1,e=3,0)
+d percentile(v,e=1,e=3,5)
+d percentile(v,e=1,e=3,50)
+d percentile(v,e=1,e=3,95)
+d percentile(v,e=1,e=3,100)
+set x 2
+d percentile(v,e=1,e=3,50)
+set x 1
+set t 1
+d percentile(v,t=1,t=5,25)
+set t 1 5
+d percentile(v,e=1,e=3,50)
+set t 1
+d percentile(v,t=1,t=5,50,2)
+set x 2
+set t 3
+d percentile(v,e=2,e=2,50)
+quit

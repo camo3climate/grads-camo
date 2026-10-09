@@ -1,0 +1,415 @@
+--- a/src/gafunc.c
++++ b/src/gafunc.c
+@@ -15,6 +15,8 @@
+ #endif /* HAVE_CONFIG_H */
+ 
+ #include <math.h>
++#include <errno.h>
++#include <limits.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <dlfcn.h>
+@@ -91,6 +93,7 @@
+ gaint ffmax    (struct gafunc *, struct gastat *);
+ gaint ffminl   (struct gafunc *, struct gastat *);
+ gaint ffmaxl   (struct gafunc *, struct gastat *);
++gaint ffpctl   (struct gafunc *, struct gastat *);
+ gaint ffflvl   (struct gafunc *, struct gastat *);
+ gaint ffsreg   (struct gafunc *, struct gastat *); 
+ gaint fftreg   (struct gafunc *, struct gastat *); 
+@@ -106,6 +109,7 @@
+ void cosadj    (struct gagrid *);
+ char doaave    (struct gagrid *, gadouble, gadouble, gadouble, gadouble, gaint, gadouble *);
+ gaint mnmx     (struct gafunc *, struct gastat *, int);
++static int pctlcmp (const void *, const void *);
+ 
+ 
+ /* the pointer to the anchor of user-defined plug-ins is set from grads.c */
+@@ -179,6 +183,7 @@
+   if (cmpwrd("max",name)) fpntr = ffmax;
+   if (cmpwrd("minloc",name)) fpntr = ffminl;
+   if (cmpwrd("maxloc",name)) fpntr = ffmaxl;
++  if (cmpwrd("percentile",name)) fpntr = ffpctl;
+   if (cmpwrd("fndlvl",name)) fpntr = ffflvl;
+   if (cmpwrd("sregr",name)) fpntr = ffsreg;  
+   if (cmpwrd("tregr",name)) fpntr = fftreg;  
+@@ -3701,7 +3706,272 @@
+ err3:
+   snprintf(pout,1255,"Error from %s: Invalid time increment argument\n",fnam);
+   gaprnt(0,pout);
++  return (1);
++}
++
++
++/* Return a percentile over one grid dimension.  Missing values are
++   omitted and the result uses linear interpolation between adjacent
++   order statistics (Hyndman and Fan type 7). */
++
++static int pctlcmp (const void *a, const void *b) {
++gadouble aa,bb;
++
++  aa = *(const gadouble *)a;
++  bb = *(const gadouble *)b;
++  if (aa < bb) return (-1);
++  if (aa > bb) return (1);
++  return (0);
++}
++
++/* dimprs expects a closing ')' after an ensemble name. Function arguments
++   are separate NUL-terminated strings, so resolve names without that scan. */
++static char *pctldim (char *arg, struct gastat *pst, struct gafile *pfi,
++                     gaint *dim, gadouble *grid, gaint *wflag) {
++gaint i;
++  if (strncmp(arg,"ens",3)!=0)
++    return dimprs(arg,pst,pfi,dim,grid,1,wflag);
++  if (strncmp(arg,"ens=",4)!=0 || pfi->ens1==NULL) return NULL;
++  for (i=0; i<pfi->dnum[4]; i++) {
++    if (strcmp(arg+4,pfi->ens1[i].name)==0) {
++      *dim = 4;
++      *grid = (gadouble)i+1.0+pfi->dimoff[4];
++      *wflag = 1;
++      return arg+strlen(arg);
++    }
++  }
++  return NULL;
++}
++
++gaint ffpctl (struct gafunc *pfc, struct gastat *pst) {
++struct gafile *pfi;
++struct gagrid *pgr=NULL,*pgr1=NULL;
++gadouble (*conv) (gadouble *, gadouble);
++gadouble gr1=0.0,gr2=0.0,pct,abs,pos,frac,mos,mns,steps;
++gadouble *samples=NULL,*scratch=NULL;
++char *ch,*end,*masks=NULL;
++gaint dim=-1,dim2=-1,wflag=0,d1,d2,d,incr=1,rc=0;
++long count;
++size_t i,s,nsamp,siz,total,nvalid,lo,hi;
++
++  if (pfc->argnum<4 || pfc->argnum>5) {
++    gaprnt (0,"Error from PERCENTILE: Too many or too few args\n");
++    gaprnt (0,"                       4 or 5 arguments expected\n");
++    return (1);
++  }
++
++  pfi = pst->pfid;
++  if (pfi==NULL || (pfi->type!=1 && pfi->type!=4 && pfi->type!=5)) {
++    gaprnt (0,"Error from PERCENTILE: a gridded default file is required\n");
++    return (1);
++  }
++  ch = pctldim (pfc->argpnt[1],pst,pfi,&dim,&gr1,&wflag);
++  if (ch==NULL || *ch!='\0' || !isfinite(gr1) || wflag==2) {
++    gaprnt (0,"Error from PERCENTILE: 1st dimension expression invalid\n");
++    if (wflag==2)
++      gaprnt (0,"  offt expression not supported as an arg to PERCENTILE\n");
++    return (1);
++  }
++
++  wflag = 0;
++  ch = pctldim (pfc->argpnt[2],pst,pfi,&dim2,&gr2,&wflag);
++  if (ch==NULL || *ch!='\0' || !isfinite(gr2) ||
++      dim2!=dim || gr2<gr1 || wflag==2) {
++    gaprnt (0,"Error from PERCENTILE: 2nd dimension expression invalid\n");
++    if (dim2!=dim)
++      gaprnt (0,"  start and end points have different dimensions\n");
++    if (gr2<gr1)
++      gaprnt (0,"  end grid point is less than start grid point\n");
++    if (wflag==2)
++      gaprnt (0,"  offt expression not supported as an arg to PERCENTILE\n");
++    return (1);
++  }
++
++  end = getdbl(pfc->argpnt[3],&pct);
++  if (end==NULL || *end!='\0' || !isfinite(pct) || pct<0.0 || pct>100.0) {
++    gaprnt (0,"Error from PERCENTILE: percentile must be between 0 and 100\n");
++    return (1);
++  }
++
++  if (pfc->argnum==5) {
++    if (dim!=3) {
++      gaprnt (0,"Error from PERCENTILE: increment is valid only for time\n");
++      return (1);
++    }
++    /* Parse bounded integers before any arithmetic. The older intprs /
++       rdtprs helpers can overflow on an excessively long input. */
++    ch = pfc->argpnt[4];
++    errno = 0;
++    count = strtol(ch,&end,10);
++    if (end==ch || errno==ERANGE || count<1 || count>INT_MAX) goto incerr;
++    if (*end=='\0') incr = (gaint)count;
++    else {
++      mos = mns = 0.0;
++      while (*ch) {
++        if (*ch<'0' || *ch>'9') goto incerr;
++        errno = 0;
++        count = strtol(ch,&end,10);
++        if (errno==ERANGE || count>INT_MAX) goto incerr;
++        if (strncmp(end,"yr",2)==0) mos += 12.0*count;
++        else if (strncmp(end,"mo",2)==0) mos += count;
++        else if (strncmp(end,"dy",2)==0) mns += 1440.0*count;
++        else if (strncmp(end,"hr",2)==0) mns += 60.0*count;
++        else if (strncmp(end,"mn",2)==0) mns += count;
++        else goto incerr;
++        ch = end+2;
++      }
++      /* A mixed calendar/fixed-length increment is ambiguous. */
++      if (mos>0.0 && mns>0.0) goto incerr;
++      if (mos>0.0 && *(pfi->grvals[3]+5)>0.0)
++        steps = mos / (*(pfi->grvals[3]+5));
++      else if (mns>0.0 && *(pfi->grvals[3]+6)>0.0)
++        steps = mns / (*(pfi->grvals[3]+6));
++      else goto incerr;
++      if (steps<1.0 || steps>INT_MAX || steps!=floor(steps)) goto incerr;
++      incr = (gaint)steps;
++    }
++    if (incr<1) goto incerr;
++  }
++
++  if (pst->idim==dim) {
++    pst->idim = pst->jdim;
++    pst->jdim = -1;
++  }
++  if (pst->jdim==dim) pst->jdim = -1;
++  gr1 = ceil(gr1-0.001);
++  gr2 = floor(gr2+0.001);
++  if (gr1<INT_MIN || gr1>INT_MAX || gr2<INT_MIN || gr2>INT_MAX) {
++    gaprnt (0,"Error from PERCENTILE: grid coordinate is out of range\n");
++    return (1);
++  }
++  d1 = (gaint)gr1;
++  d2 = (gaint)gr2;
++  if (d2<d1) {
++    gaprnt (0,"Error from PERCENTILE: dimension range contains no grid points\n");
++    return (1);
++  }
++  steps = floor((gr2-gr1)/incr)+1.0;
++  if (steps>(gadouble)((size_t)-1)) {
++    gaprnt (0,"Error from PERCENTILE: too many samples\n");
++    return (1);
++  }
++  nsamp = (size_t)steps;
++
++  if (mfcmn.warnflg > 0) {
++    snprintf(pout,1255,
++             "PERCENTILE: dim = %i, start = %i, end = %i, pct = %g\n",
++             dim,d1,d2,pct);
++    gaprnt (2,pout);
++  }
++
++  d = d1;
++  for (s=0; s<nsamp; s++) {
++    if (dim==3) {
++      gr2t (pfi->grvals[3],d,&(pst->tmin));
++      pst->tmax = pst->tmin;
++    }
++    else {
++      conv = pfi->gr2ab[dim];
++      abs = conv(pfi->grvals[dim],d);
++      pst->dmin[dim] = abs;
++      pst->dmax[dim] = abs;
++    }
++
++    rc = gaexpr(pfc->argpnt[0],pst);
++    if (rc) goto exprerr;
++    if (pst->type==0) {
++      gafree(pst);
++      rc = -1;
++      goto exprerr;
++    }
++    pgr = pst->result.pgr;
++
++    if (s==0) {
++      pgr1 = pgr;
++      if (pgr1->isiz<1 || pgr1->jsiz<1 ||
++          (size_t)pgr1->isiz>((size_t)-1)/(size_t)pgr1->jsiz) {
++        gaprnt (0,"Error from PERCENTILE: invalid grid size\n");
++        goto memerr;
++      }
++      siz = (size_t)pgr1->isiz * (size_t)pgr1->jsiz;
++      if (siz==0 || nsamp>((size_t)-1)/siz ||
++          nsamp*siz>((size_t)-1)/sizeof(gadouble)) {
++        gaprnt (0,"Error from PERCENTILE: requested result is too large\n");
++        goto memerr;
++      }
++      total = nsamp*siz;
++      samples = (gadouble *)galloc(total*sizeof(gadouble),"pctlsamples");
++      masks = (char *)galloc(total*sizeof(char),"pctlmasks");
++      scratch = (gadouble *)galloc(nsamp*sizeof(gadouble),"pctlscratch");
++      if (samples==NULL || masks==NULL || scratch==NULL) {
++        gaprnt (0,"Error from PERCENTILE: memory allocation failed\n");
++        goto memerr;
++      }
++    }
++    else if (pgr->isiz!=pgr1->isiz || pgr->jsiz!=pgr1->jsiz ||
++             pgr->idim!=pgr1->idim || pgr->jdim!=pgr1->jdim ||
++             gagchk(pgr1,pgr,pgr1->idim) || gagchk(pgr1,pgr,pgr1->jdim)) {
++      gaprnt (0,"Error from PERCENTILE: expression grids do not match\n");
++      gagfre(pgr);
++      goto memerr;
++    }
++
++    for (i=0; i<siz; i++) {
++      masks[s*siz+i] = pgr->umask[i] && isfinite(pgr->grid[i]);
++      samples[s*siz+i] = masks[s*siz+i] ? pgr->grid[i] : 0.0;
++    }
++    if (s>0) gagfre(pgr);
++    /* Do not increment after the last sample: d2 may be INT_MAX. */
++    if (s+1<nsamp) d += incr;
++  }
++
++  for (i=0; i<siz; i++) {
++    nvalid = 0;
++    for (s=0; s<nsamp; s++) {
++      if (masks[s*siz+i]) scratch[nvalid++] = samples[s*siz+i];
++    }
++    if (nvalid==0) {
++      pgr1->umask[i] = 0;
++    }
++    else {
++      qsort(scratch,nvalid,sizeof(gadouble),pctlcmp);
++      pos = ((gadouble)nvalid-1.0)*pct/100.0;
++      lo = (size_t)floor(pos);
++      hi = (size_t)ceil(pos);
++      frac = pos-(gadouble)lo;
++      if (lo==hi) pgr1->grid[i] = scratch[lo];
++      else if (scratch[lo]<0.0 && scratch[hi]>0.0)
++        pgr1->grid[i] = (1.0-frac)*scratch[lo] + frac*scratch[hi];
++      else pgr1->grid[i] = scratch[lo] + frac*(scratch[hi]-scratch[lo]);
++      pgr1->umask[i] = 1;
++    }
++  }
++
++  gree(samples,"pctlsamples");
++  gree(masks,"pctlmasks");
++  gree(scratch,"pctlscratch");
++  pst->type = 1;
++  pst->result.pgr = pgr1;
++  return (0);
++
++incerr:
++  gaprnt (0,"Error from PERCENTILE: invalid time increment argument\n");
+   return (1);
++
++memerr:
++  if (samples) gree(samples,"pctlsamples");
++  if (masks) gree(masks,"pctlmasks");
++  if (scratch) gree(scratch,"pctlscratch");
++  if (pgr1) gagfre(pgr1);
++  return (1);
++
++exprerr:
++  if (samples) gree(samples,"pctlsamples");
++  if (masks) gree(masks,"pctlmasks");
++  if (scratch) gree(scratch,"pctlscratch");
++  if (pgr1) gagfre(pgr1);
++  gaprnt (0,"Error from PERCENTILE: error getting grids\n");
++  return (rc);
+ }
+ 
+ 
+--- a/doc/functions.html
++++ b/doc/functions.html
+@@ -50,6 +50,7 @@
+ <br><code><a href="gradfuncminloc.html">minloc()</a>&nbsp;&nbsp;&nbsp;&nbsp;</code>Returns grid location of the minimum value
+ <br><code><a href="gradfuncoabin.html">oabin()</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code>Bins station observations into grid cells 
+ <br><code><a href="gradfuncoacres.html">oacres()</a>&nbsp;&nbsp;&nbsp;&nbsp;</code>Returns a gridded result that represents station data
++<br><code><a href="gradfuncpercentile.html">percentile()</a></code>Returns a percentile over any grid dimension
+ <br><code><a href="gradfuncpow.html">pow()</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code>Raises the values of <code><i>arg1</i></code> to the power of <code><i>arg2</i></code>
+ <br><code><a href="gradfuncs2g1d.html">s2g1d()</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code>Converts a station timeseries to a 1D grid
+ <br><code><a href="gradfuncscorr.html">scorr()</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code>Calculates the spatial correlation over an X-Y domain 
+@@ -74,4 +75,3 @@
+ 
+ </body>
+ </html>
+-
+--- a/doc/functionsatt.html
++++ b/doc/functionsatt.html
+@@ -20,6 +20,7 @@
+ <br><code><a href="gradfuncgint.html">gint()</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code>General integral
+ <br><code><a href="gradfunclog.html">log()</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code>Calculates the natural logarithm
+ <br><code><a href="gradfunclog10.html">log10()</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code>Calculates the logarithm base 10
++<br><code><a href="gradfuncpercentile.html">percentile()</a></code>Returns a percentile over any grid dimension
+ <br><code><a href="gradfuncpow.html">pow()</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code>Raises the values of <code><i>arg1</i></code> to the power of <code><i>arg2</i></code>
+ <br><code><a href="gradfuncsqrt.html">sqrt()</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code>Calculates the square root
+ <br><code><a href="gradfuncvint.html">vint()</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code>Calculates a mass-weighted vertical integral in mb pressure coordinates
+@@ -109,4 +110,3 @@
+ </body>
+ </html>
+ 
+-
+--- /dev/null
++++ b/doc/gradfuncpercentile.html
+@@ -0,0 +1,74 @@
++<!--Copyright (C) 1988-2022 by George Mason University. See file COPYRIGHT for more information.-->
++
++<html>
++<head>
++<title>GrADS Function: percentile</title>
++</head>
++<body bgcolor="e0f0ff" text="#000000">
++
++<h2><b>percentile()</b></h2>
++<p>
++<code>percentile(<i>expr, dim1, dim2, pct <,tinc></i>)</code>
++
++<p>
++Returns a percentile of <code><i>expr</i></code> over the specified
++dimension range. Missing and non-finite values are omitted. If the reduction dimension
++is time, an optional time increment <code><i>tinc</i></code> may be
++specified.
++
++<p>
++<ul>
++<code><i>expr</i>&nbsp;&nbsp;&nbsp;&nbsp;</code>- any valid GrADS expression<br>
++<code><i>dim1</i>&nbsp;&nbsp;&nbsp;&nbsp;</code>- the start point of the reduction<br>
++<code><i>dim2</i>&nbsp;&nbsp;&nbsp;&nbsp;</code>- the end point of the reduction<br>
++<code><i>pct</i>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code>- percentile from 0 through 100<br>
++<code><i>tinc</i>&nbsp;&nbsp;&nbsp;&nbsp;</code>- optional increment for a time reduction<br>
++</ul>
++
++<p>
++<code><i>dim1</i></code> and <code><i>dim2</i></code> are standard
++GrADS dimension expressions and must refer to the same dimension. X, Y,
++Z, T, and E reductions are supported. A gridded default file and a gridded
++expression are required; station data are not supported.
++
++<h3>Usage Notes</h3>
++<ol>
++<li>Values are equally weighted. Geographic grid spacing and latitude
++weights are not applied.</li>
++<li>The result uses linear interpolation between adjacent sorted values,
++with rank <code>(N-1)*pct/100</code> (Hyndman and Fan type 7).</li>
++<li>If one valid value is present it is returned for every percentile. If
++no valid values are present, the result is missing.</li>
++<li><code>percentile(...,0)</code> and
++<code>percentile(...,100)</code> are equivalent to the minimum and maximum
++values over the selected samples.</li>
++<li>Only grid points inside the requested range are sampled; endpoints
++are not spatially interpolated. The percentile value itself is interpolated
++between sorted samples as described above.</li>
++<li>The optional time increment is a positive integer number of grid steps
++or a duration such as <code>6hr</code>, <code>1dy</code>, or <code>1mo</code>.
++It must be an exact multiple of the file's time step. Calendar-month and
++fixed-length units may not be mixed.</li>
++<li>Memory usage is proportional to the number of samples multiplied by
++the number of output grid points (approximately 9 bytes per pair, plus
++sorting workspace). Reduce the domain or process smaller tiles if needed.</li>
++</ol>
++
++<h3>Examples</h3>
++<p>
++The ensemble median, and the lower and upper limits of a central
++90-percent ensemble interval, may be evaluated with:
++<p>
++<code>
++percentile(z,e=1,e=100,50)<br>
++percentile(z,e=1,e=100,5)<br>
++percentile(z,e=1,e=100,95)
++</code>
++
++<p>
++The 90th percentile over every fourth time step is:
++<p>
++<code>percentile(temp,t=1,t=120,90,4)</code>
++
++</body>
++</html>

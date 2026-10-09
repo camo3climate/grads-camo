@@ -1,0 +1,15 @@
+Description: preserve HDF5 library search path for serial HDF5 layouts
+Author: CAMO packaging maintainers
+Forwarded: no
+
+--- a/configure.ac
++++ b/configure.ac
+@@ -655,7 +655,7 @@
+   AC_CHECK_HDF5([
+     use_hdf5='yes'
+     hdf5_inc=$HDF5_CFLAGS
+-    hdf5_libs="$HDF5_LIBS"
++    hdf5_libs="$HDF5_LDFLAGS $HDF5_LIBS"
+   ])
+ fi
+ # set output variables

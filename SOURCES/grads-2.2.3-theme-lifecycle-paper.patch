@@ -1,0 +1,228 @@
+Description: align modern startup/reset and add opt-in presentation-only paper theme
+Author: CAMO packaging maintainers
+Forwarded: no
+Last-Update: 2026-10-04
+
+--- grads-2.2.3/src/camo_colormap_impl.inc
++++ grads-2.2.3/src/camo_colormap_impl.inc
+@@ -160,6 +160,49 @@
+   return(0);
+ }
+ 
++/* Commands lazily initialize these pointers, but startup applies a theme
++   before the first command. Obtain the already-loaded backends here too. */
++static void gacamo_theme_font (void) {
++  if (dsubs==NULL) dsubs = getdsubs();
++  if (psubs==NULL) psubs = getpsubs();
++  if (dsubs && psubs && dsubs->gxdckfont && psubs->gxpckfont &&
++      dsubs->gxdckfont()!=0 && psubs->gxpckfont()!=0) gxdbsethersh(1);
++  else gxdbsethersh(0);    /* Hershey fallback needs no system font library. */
++  gxchdf(0);
++}
++
++/* One silent implementation for startup, reset/reinit and explicit modern.
++   The output type is set by startup/reset, not by an explicit theme command. */
++gaint gacamo_apply_modern_defaults (struct gacmn *pcm) {
++gaint i,p,npal;
++
++  if (pcm==NULL) return(1);
++  gxsetllasp(1.0);
++  gacamo_theme_font();
++  pcm->grflag = 1;
++  pcm->grstyl = 1;
++  pcm->grcolr = 15;
++  pcm->grthck = 1;
++  pcm->mapcol = 15;
++  pcm->mapstl = 1;
++  pcm->mapthk = 2;
++  pcm->aaflg = 1;
++  gxsignal(3);
++
++  p = -1;
++  npal = sizeof(palettes) / sizeof(palettes[0]);
++  for (i=0; i<npal; i++) {
++    if (cmpwrdl("cividis",(char *)palettes[i].key)) p = i;
++  }
++  if (p<0) return(1);
++  for (i=0; i<CAMO_RGBMAP_COLORS; i++) {
++    gxacol(16+i, palettes[p].red[i], palettes[p].green[i], palettes[p].blue[i], 255);
++    pcm->rbcols[i] = 16+i;
++  }
++  pcm->rbflg = CAMO_RGBMAP_COLORS;
++  return(0);
++}
++
+ static gaint gaset_theme (char *cmd, struct gacmn *pcm) {
+   if (cmd==NULL) {
+     gaprnt(0,"SET THEME Error: missing theme name\n");
+@@ -181,58 +224,37 @@
+     return(0);
+   }
+   if (cmpwrd("modern",cmd)) {
+-    gxsetllasp(1.0);
+-    if (dsubs && psubs && dsubs->gxdckfont()!=0 && psubs->gxpckfont()!=0) {
+-      gxdbsethersh(1);
+-      gxchdf(0);
+-    }
++    if (gacamo_apply_modern_defaults(pcm)) return(1);
++    gaprnt(2,"theme = modern (cividis)\n");
++    return(0);
++  }
++  if (cmpwrd("paper",cmd)) {
++    /* Experimental presentation preset. Never allocate/redefine palette
++       colors or change data scaling, contour levels or output selection. */
++    gxdbck(1);
++    gxdbsetfontfamily("sans-serif");
++    gacamo_theme_font();
+     pcm->grflag = 1;
+     pcm->grstyl = 1;
+     pcm->grcolr = 15;
+     pcm->grthck = 1;
+-    pcm->mapcol = 15;
++    pcm->mapcol = 1;
+     pcm->mapstl = 1;
+     pcm->mapthk = 2;
++    pcm->anncol = 1;
++    pcm->annthk = 3;
++    pcm->xlcol = pcm->ylcol = 1;
++    pcm->xlthck = pcm->ylthck = 3;
++    pcm->xlsiz = pcm->ylsiz = 0.12;
++    pcm->strcol = 1;
++    pcm->strthk = 3;
++    pcm->strhsz = pcm->strvsz = 0.12;
+     pcm->aaflg = 1;
+     gxsignal(3);
+-    gaset_rgbmap("cividis",pcm);
+-    gaprnt(2,"theme = modern (cividis)\n");
++    gaprnt(2,"theme = paper (experimental; palette and data settings unchanged)\n");
++    gaprnt(2,"Apply before drawing; clear to start a white page.\n");
+     return(0);
+   }
+-  gaprnt(0,"SET THEME Error: valid themes are classic or modern\n");
++  gaprnt(0,"SET THEME Error: valid themes are classic, modern or paper\n");
+   return(1);
+ }
+-
+-gaint gacamo_apply_modern_defaults (struct gacmn *pcm) {
+-gaint i,j,p,npal;
+-
+-  if (pcm==NULL) return(1);
+-  gxsetllasp(1.0);
+-  if (dsubs && psubs && dsubs->gxdckfont()!=0 && psubs->gxpckfont()!=0) {
+-    gxdbsethersh(1);
+-    gxchdf(0);
+-  }
+-  pcm->grflag = 1;
+-  pcm->grstyl = 1;
+-  pcm->grcolr = 15;
+-  pcm->grthck = 1;
+-  pcm->mapcol = 15;
+-  pcm->mapstl = 1;
+-  pcm->mapthk = 2;
+-  pcm->aaflg = 1;
+-  gxsignal(3);
+-
+-  p = -1;
+-  npal = sizeof(palettes) / sizeof(palettes[0]);
+-  for (i=0; i<npal; i++) {
+-    if (cmpwrdl("cividis",(char *)palettes[i].key)) p = i;
+-  }
+-  if (p<0) return(1);
+-  for (i=0; i<CAMO_RGBMAP_COLORS; i++) {
+-    j = i;
+-    gxacol(16+i, palettes[p].red[j], palettes[p].green[j], palettes[p].blue[j], 255);
+-    pcm->rbcols[i] = 16+i;
+-  }
+-  pcm->rbflg = CAMO_RGBMAP_COLORS;
+-  return(0);
+-}
+--- grads-2.2.3/src/gauser.c
++++ grads-2.2.3/src/gauser.c
+@@ -326,9 +326,9 @@
+       gxdbck(0);             /* device backgroud reset to black only on reinit, not reset */
+     }
+     dsubs->gxdsignal(3);     /* tell hardware to re-enable anti-aliasing */
+-    gxsetllasp(1.2);         /* reset lat/lon map aspect to classic GrADS */
+-    gxdbsethersh(0);         /* set hershey font on   */
+-    gxchdf(0);               /* set default font to 0 */ 
++    /* Match startup defaults. Clear/open retain explicit user styling. */
++    gacamo_apply_modern_defaults(pcm);
++    pcm->gout2a = 16;
+     gxcolr(1);               /* set color to foreground */    
+     gxdbsettransclr(-1);     /* unset any transparent color override */
+     gxfrme (1);
+@@ -3124,12 +3124,12 @@
+ 		   "StnMark","Barb","GrFill","LineFill","","","Fwrite","Findstn","Stat",
+                    "GeoTIFF", "KML", "Shapefile","ImageMap","Shaded2","Shaded2b"};
+ /* messages for query gxout */
+-static char *gxout0D[3]   = {"Display", "Stat", "Print"};
++static char *gxout0D[4]   = {"Display", "Stat", "Print", "WriteGDS"};
+ static char *gxout1D[5]   = {"0", "Line", "Bar", "Errbar", "Linefill"};
+ static char *gxout1Da[3]  = {"0", "Vector", "Barb"};
+ static char *gxout2Da[20] = {"0", "Contour", "Shaded","Grid", "4", "5", "Fgrid",
+ 			     "Fwrite", "8", "9", "Grfill", "Pgrid", "GeoTIFF", "KML",
+-			     "ImageMap","Shapefile","16","17","18","19"};
++			     "ImageMap","Shapefile","Shaded2","Shaded2b","18","19"};
+ static char *gxout2Db[10] = {"0", "1", "2", "Grid", "Vector", "Scatter", "6", "7", "Stream", "Barb"};
+ static char *gxoutStn[10]  = {"0", "Value", "Barb", "Findstn", "Model", 
+ 			      "Wxsym", "6", "Stnmark", "Stnwrite", "Shapefile"};
+@@ -4449,7 +4449,8 @@
+   }
+ 
+   else if (cmpwrd(arg,"gxout")) {
+-    snprintf(pout,1255,"General = %s\n",gxout0D[pcm->gout1]);
++    snprintf(pout,1255,"General = %s\n",
++             (pcm->gout0>=0 && pcm->gout0<4) ? gxout0D[pcm->gout0] : "Unknown");
+     gaprnt(2,pout);
+     snprintf(pout,1255,"1D Graphic, 1 expr = %s\n",gxout1D[pcm->gout1]);
+     gaprnt(2,pout);
+@@ -5045,7 +5046,7 @@
+   arg = nxtwrd(cmd);
+   if (arg && cmpwrdl("camo",arg)) {
+     printf ("\nGrADS CAMO additions:\n");
+-    printf (" set theme classic|modern\n");
++    printf (" set theme classic|modern|paper\n");
+     printf (" set rgbmap NAME [start] [reverse]\n");
+     printf (" set fontfamily NAME\n");
+     printf (" set panels ROW COL [gap]; set panel N; set panels off\n");
+@@ -5058,12 +5059,29 @@
+     printf (" draw georec[f] LON1 LAT1 LON2 LAT2\n");
+     printf (" export FILE [transparent] [scale N]\n");
+     printf (" export FILE [width N|height N|size W H]\n");
++    printf (" help theme     startup defaults and presentation presets\n");
+     printf (" help color     colormaps and URL\n");
+     printf (" help gxout     drawing output types\n");
+     printf (" help text      text and font hints\n");
+     printf (" help geo       geographic drawing hints\n");
+     printf (" help export    image/vector export hints\n");
+     printf (" CAMO project: https://github.com/camo3climate/grads-camo\n");
++    return (0);
++  }
++  if (arg && cmpwrdl("theme",arg)) {
++    printf ("\nCAMO themes: set theme classic|modern|paper\n");
++    printf (" Startup/reset/reinit: modern font/grid/map, cividis, gxout shaded.\n");
++    printf (" Classic: Hershey fonts, classic map aspect/grid and rainbow colors.\n");
++    printf (" Modern: system sans font (Hershey fallback), thin grid/map, cividis.\n");
++    printf (" Paper (experimental): white background, sans-serif, compact labels,\n");
++    printf ("   thin map/grid. Keeps rgbmap/rbcols, clevs/ccols, data scaling, gxout\n");
++    printf ("   and projection/aspect unchanged. No new colors or font dependencies.\n");
++    printf (" Explicit themes do not change gxout. Classic/modern keep the background.\n");
++    printf (" Apply a theme before drawing; then clear to start a page.\n");
++    printf (" Clear/open preserve theme-controlled settings; reset restores modern\n");
++    printf ("   but keeps the background; reinit also restores a black background.\n");
++    printf (" Themes apply presets, not snapshots; individual overrides remain available.\n");
++    printf (" Keep one font family per page through gxprint/redraw.\n");
+     return (0);
+   }
+   if (arg && (cmpwrdl("color",arg) || cmpwrdl("rgbmap",arg))) {
+@@ -5112,8 +5130,8 @@
+     printf (" draw string X Y TEXT     draw text\n");
+     printf (" set clab on|off|forced   contour labels\n");
+     printf (" set grads on|off         GrADS label\n");
+-    printf (" Theme: set theme modern  uses cleaner defaults.\n");
+-    printf (" See also: help camo\n");
++    printf (" Themes: modern for screen; paper for an experimental white-page preset.\n");
++    printf (" See also: help theme, help camo\n");
+     return (0);
+   }
+   if (arg && cmpwrdl("geo",arg)) {

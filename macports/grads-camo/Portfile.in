@@ -1,0 +1,135 @@
+# -*- mode: tcl; tab-width: 4; indent-tabs-mode: nil -*-
+
+PortSystem          1.0
+
+name                grads-camo
+version             2.2.3
+revision            7
+categories          science
+conflicts           grads
+supported_archs     arm64
+universal_variant   no
+license             GPL-2
+maintainers         nomaintainer
+description         Apple Silicon CAMO build of GrADS with interactive X11
+long_description    GrADS ${version} with CAMO geographic drawing commands, built \
+                    natively for Apple Silicon and requiring an X11 server.
+homepage            https://github.com/camo3climate/grads-camo
+
+master_sites        file://${filespath}/
+distname            grads-${version}-src
+checksums            rmd160  2d9b7bded4495b4436bce90f75fdfcea255d148c \
+                    sha256  0454897a76811e4c3f954fb52bb5b6b3b515468a62f2a7966a594cbc6036d47f \
+                    size    6545238
+worksrcdir           grads-${version}
+
+depends_build       port:autoconf \
+                    port:automake \
+                    port:libtool \
+                    port:pkgconfig
+
+use_autoreconf      yes
+autoreconf.args     -fvi
+
+depends_lib         port:readline \
+                    port:netcdf \
+                    port:udunits2 \
+                    port:hdf4 \
+                    port:hdf5 \
+                    port:gd2 \
+                    port:wgrib2 \
+                    port:libgeotiff \
+                    port:shapelib \
+                    path:lib/pkgconfig/cairo.pc:cairo \
+                    port:xorg-libX11 \
+                    port:xorg-libXext \
+                    port:xorg-libXmu \
+                    port:xrender
+depends_run         port:xorg-server
+
+patchfiles          grads-2.2.1-system-supplibs.patch \
+                    grads-2.2.3-camo-config.patch \
+                    grads-2.2.1-timeunits-parse.patch \
+                    grads-2.2.1-format-security.patch \
+                    grads-2.2.1-without-dap.patch \
+                    grads-2.2.1-cairo-aflush.patch \
+                    grads-2.2.1-gcc14.patch \
+                    grads-2.2.1-gcc15.patch \
+                    grads-2.2.1-disable-gadap-macro.patch \
+                    grads-2.2.1-themes-rgbmap.patch \
+                    grads-2.2.3-geo-draw.patch \
+                    grads-2.2.3-geo-commands.patch \
+                    grads-2.2.3-command-cleanup.patch \
+                    grads-2.2.3-udunits2-include.patch \
+                    grads-2.2.3-hdf5-serial-ldflags.patch \
+                    grads-2.2.3-hdf5-modern-api.patch \
+                    grads-2.2.3-enable-grib2-g2c-portable.patch \
+                    grads-2.2.3-txtwrite.patch \
+                    grads-2.2.3-modern-gxout2.patch \
+                    grads-2.2.3-re-limited.patch \
+                    grads-2.2.3-axis-label-size.patch \
+                    grads-2.2.3-modern-startup-defaults.patch \
+                    grads-2.2.3-percentile.patch \
+                    grads-2.2.3-geo-annotations.patch \
+                    grads-2.2.3-grib2-png-link.patch \
+                    grads-2.2.3-annotation-scripts.patch \
+                    grads-2.2.3-theme-lifecycle-paper.patch \
+                    grads-2.2.3-netcdf-safety.patch \
+                    grads-2.2.3-sdfctl.patch
+
+patch.pre_args      -p1
+
+post-patch {
+    copy -force ${filespath}/cairo.m4 ${worksrcpath}/m4/cairo.m4
+    copy -force ${filespath}/libshp.m4 ${worksrcpath}/m4/libshp.m4
+    reinplace "s|SUPPLIBS.*= /usr|SUPPLIBS = ${prefix}|" \
+        ${worksrcpath}/src/Makefile.am
+    reinplace "s|/usr/local/lib/grads|${prefix}/share/grads|" \
+        ${worksrcpath}/src/gxsubs.c
+    reinplace "s|/usr/share/doc/grads|${prefix}/share/doc/${name}|" \
+        ${worksrcpath}/src/gauser.c
+}
+
+configure.env-append SUPPLIBS=${prefix}
+configure.cflags-append -fPIC -Wno-trigraphs -I${prefix}/include/udunits2
+configure.cppflags-append -I${prefix}/include/udunits2
+configure.args      --enable-dyn-supplibs \
+                    --without-gadap \
+                    --with-x \
+                    --with-shp=${prefix} \
+                    --with-geotiff=${prefix} \
+                    --with-hdf4=${prefix} \
+                    --with-hdf5=${prefix} \
+                    --with-netcdf=${prefix} \
+                    --libdir=${prefix}/lib/grads
+
+post-configure {
+    set config_h [open ${worksrcpath}/src/config.h a]
+    puts ${config_h} "\n#define CAMO_VERSION \"camo26.2\""
+    close ${config_h}
+}
+
+post-destroot {
+    delete {*}[glob -nocomplain ${destroot}${prefix}/lib/grads/*.la]
+    xinstall -d ${destroot}${prefix}/share/grads
+    copy {*}[glob ${worksrcpath}/data/*] ${destroot}${prefix}/share/grads
+    set udpt [open ${filespath}/udpt.in r]
+    set udpt_data [read ${udpt}]
+    close ${udpt}
+    regsub -all {@LIBDIR@} ${udpt_data} ${prefix}/lib udpt_data
+    regsub -all {\.so} ${udpt_data} {.dylib} udpt_data
+    set udpt_out [open ${destroot}${prefix}/share/grads/udpt w]
+    puts -nonewline ${udpt_out} ${udpt_data}
+    close ${udpt_out}
+
+    foreach binary [concat \
+        [glob -nocomplain ${destroot}${prefix}/bin/*] \
+        [glob -nocomplain ${destroot}${prefix}/lib/grads/*.dylib]] {
+        if {[catch {exec /usr/bin/lipo ${binary} -verify_arch arm64}]} {
+            return -code error "non-arm64 Mach-O artifact: ${binary}"
+        }
+    }
+}
+
+notes "grads-camo requires the MacPorts xorg-server and an active X11 session.\n\
+Log out and back in after the first X11 server installation if DISPLAY is not set."

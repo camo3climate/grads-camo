@@ -1,0 +1,15 @@
+Description: use the unversioned libpng link name with system g2clib
+Author: CAMO packaging maintainers
+Forwarded: no
+
+--- a/m4/grib2.m4
++++ b/m4/grib2.m4
+@@ -6,7 +6,7 @@
+   AC_CHECK_HEADER(grib2.h,
+   [ AC_CHECK_LIB(grib2c, g2_info, [
+       ga_check_grib2="yes"
+-      G2_LIBS="-lgrib2c -ljasper -lpng15 -lz"
++      G2_LIBS="-lgrib2c -ljasper -lpng -lz"
+     ])
+   ])
+   if test $ga_check_grib2 = "yes" ; then

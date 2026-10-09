@@ -1,0 +1,117 @@
+Description: add projection-aware geographic drawing helpers
+Author: CAMO packaging maintainers
+Forwarded: no
+
+--- a/src/gauser.c
++++ b/src/gauser.c
+@@ -1257,13 +1257,109 @@ size_t sz;
+ 
+ static gadouble justx[9] = {0.0,0.5,1.0,0.0,0.5,1.0,0.0,0.5,1.0};
+ static gadouble justy[9] = {0.0,0.0,0.0,0.5,0.5,0.5,1.0,1.0,1.0};
++
++static gaint gadraw_geo_ready (struct gacmn *pcm) {
++  if (pcm->xdim<0 && pcm->ydim<0 &&
++      pcm->dmax[0]>pcm->dmin[0] && pcm->dmax[1]>pcm->dmin[1]) {
++    pcm->xdim = 0;
++    pcm->ydim = 1;
++  }
++  if (pcm->xdim!=0 || pcm->ydim!=1) {
++    gaprnt(0,"DRAW GEO error: X and Y must be varying longitude and latitude\n");
++    return 0;
++  }
++  gamscl(pcm);
++  return 1;
++}
++
++static gadouble gadraw_geo_lon (gadouble lon, struct gacmn *pcm) {
++gadouble mid,delta;
++  mid = 0.5 * (pcm->dmin[0] + pcm->dmax[0]);
++  delta = remainder(remainder(lon,360.0)-remainder(mid,360.0),360.0);
++  if (fabs(delta)==180.0) delta=copysign(180.0,lon-mid);
++  return mid+delta;
++}
++
++static void gadraw_geo_step (gadouble lon, gadouble lat, gadouble bearing,
++                             gadouble delta, gadouble *newlon,
++                             gadouble *newlat) {
++gadouble latr,lonr,nlat,nlon;
++
++  latr = lat*M_PI/180.0;
++  lonr = lon*M_PI/180.0;
++  nlat = asin(sin(latr)*cos(delta) +
++              cos(latr)*sin(delta)*cos(bearing));
++  nlon = lonr + atan2(sin(bearing)*sin(delta)*cos(latr),
++                      cos(delta)-sin(latr)*sin(nlat));
++  *newlon = nlon*180.0/M_PI;
++  while (*newlon-lon > 180.0) *newlon -= 360.0;
++  while (*newlon-lon < -180.0) *newlon += 360.0;
++  *newlat = nlat*180.0/M_PI;
++}
++
++/* Project a short geodesic in both directions.  The resulting central
++   difference is the local projected direction, including angular distortion
++   from non-conformal projections such as Robinson and Mollweide. */
++static gaint gadraw_geo_vector_angle (gadouble lon, gadouble lat, gadouble u,
++                                      gadouble v, gadouble *x, gadouble *y,
++                                      gadouble *angle) {
++gadouble bearing,flon,flat,blon,blat,fx,fy,bx,by,dx,dy;
++gadouble delta = 1.0e-5;
++
++  if (fabs(lat)>89.999999) return 1;
++  gxconv(lon,lat,x,y,2);
++  bearing = atan2(u,v);
++  gadraw_geo_step(lon,lat,bearing,delta,&flon,&flat);
++  gadraw_geo_step(lon,lat,bearing+M_PI,delta,&blon,&blat);
++  gxconv(flon,flat,&fx,&fy,2);
++  gxconv(blon,blat,&bx,&by,2);
++  dx = fx-bx;
++  dy = fy-by;
++  if (!isfinite(dx) || !isfinite(dy) || hypot(dx,dy)<1.0e-10) return 1;
++  *angle = atan2(dy,dx);
++  return 0;
++}
++
++static gaint gadraw_geo_polygon (gadouble *ll, gaint cnt, gaint fill,
++                                 struct gacmn *pcm) {
++gadouble llinc,*xy;
++gaint i,newcnt;
++
++  llinc = hypot(pcm->dmax[0]-pcm->dmin[0], pcm->dmax[1]-pcm->dmin[1]);
++  llinc = llinc/200.0;
++  if (llinc<0.0001) llinc=0.0001;
++  xy = gxmpoly(ll,cnt,llinc,&newcnt);
++  if (xy==NULL) {
++    gaprnt(0,"DRAW GEO error: Unable to project geographic polygon\n");
++    return 1;
++  }
++
++  gxclip(pcm->xsiz1,pcm->xsiz2,pcm->ysiz1,pcm->ysiz2);
++  gxcolr(pcm->lincol);
++  if (fill) {
++    if (pcm->ptflg) gxptrn(pcm->ptopt,pcm->ptden,pcm->ptang);
++    gxfill(xy,newcnt);
++    if (pcm->ptflg) gxptrn(1,1,0);
++  } else {
++    gxwide(pcm->linthk);
++    gxstyl(pcm->linstl);
++    gxplot(*xy,*(xy+1),3);
++    for (i=1; i<newcnt; i++) gxplot(*(xy+i*2),*(xy+i*2+1),2);
++  }
++  gxclip(0.0,pcm->xsiz,0.0,pcm->ysiz);
++  gree(xy,"geo_poly");
++  return 0;
++}
+ 
+ gaint gadraw (char *cmd, struct gacmn *pcm) {
+ struct gbtn btn;
+ struct gdmu dmu;
+ gadouble *xy, *newxy, llinc;
+ gadouble x,y,xlo,xhi,ylo,yhi,r,cs,swide,shite,ang;
+-gaint i,cnt,newcnt,cflg,ipos,len,mk,wx,thk,col;
++gadouble lon,lat,lon2,lat2,delta,bearing,latr,lonr,newlat,newlon,prevlon;
++gadouble geou,geov,mag,dir,asiz;
++gadouble geoxy[146];
++gaint i,cnt,newcnt,cflg,ipos,len,mk,wx,thk,col,fill,kmflg;
+ char oper[12],chars[250];
+ char *c1,*c2,*ccmd;
+ size_t sz;

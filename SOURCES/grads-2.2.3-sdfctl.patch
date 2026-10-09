@@ -1,0 +1,384 @@
+--- a/src/gasdf.c
++++ b/src/gasdf.c
+@@ -53,8 +53,11 @@
+    It is used for parsing a descriptor file to see if GrADS will open it. */
+ #ifndef STNDALN
+ 
++#if USENETCDF==1
++#include "camo_sdfctl.inc"
++#endif
+ 
+-/* Open a self-describing file by reading the metadata 
++/* Open a self-describing file by reading the metadata
+    and filling in a gafile structure. Chain the gafile 
+    structure on to the list anchored in the gastat. */
+ 
+--- a/src/grads.h
++++ b/src/grads.h
+@@ -1284,6 +1284,9 @@
+ 
+ #if (USENETCDF == 1 || USEHDF == 1)
+ /* Functions in gasdf.c */
++#if USENETCDF==1
++gaint gasdfctl(char *);
++#endif
+ gaint gasdfopen(char *, struct gacmn *) ;
+ gaint gaxdfopen(char *, struct gacmn *) ;
+ struct gaattr *find_att(char *, struct gaattr *, char *);
+--- a/src/gauser.c
++++ b/src/gauser.c
+@@ -831,6 +831,11 @@
+ 
+     goto retrn;
+ #if (USENETCDF==1 || USEHDF ==1)
++#if USENETCDF==1
++  } else if (cmpwrd("sdfctl", cmd)) {
++    retcod = gasdfctl(nxtwrd(com));
++    goto retrn;
++#endif
+   } else if (cmpwrd("sdfopen", cmd)) {
+     if ((cmd = nxtwrd(com)) == NULL) {
+       gaprnt(0, "SDFOPEN error:  missing self-describing file pathname\n") ;
+@@ -5043,6 +5048,17 @@
+ char *arg;
+ 
+   arg = nxtwrd(cmd);
++  if (arg && cmpwrdl("sdfctl",arg)) {
++    printf ("\nUsage: sdfctl INPUT.nc [OUTPUT.ctl [yes]]\n");
++    printf (" Preview a supplemental XDF descriptor for regular 1-D lon/lat.\n");
++    printf (" Units must identify one unambiguous geographic grid. Z/T/E and\n");
++    printf (" data attributes remain under the existing SDF reader's rules.\n");
++    printf (" Review the preview, then repeat with OUTPUT.ctl yes to save.\n");
++    printf (" Existing files/links are never overwritten. No stdin prompt.\n");
++    printf (" Open the saved descriptor with xdfopen OUTPUT.ctl, NOT open.\n");
++    printf (" No inference of 2-D grids, groups, packed axes or special calendars.\n");
++    return (0);
++  }
+   if (arg && cmpwrdl("camo",arg)) {
+     printf ("\nGrADS CAMO additions:\n");
+     printf (" set theme classic|modern|paper\n");
+@@ -5152,6 +5168,7 @@
+   printf ("Basic commands:\n");
+   printf (" open FILE         open a GrADS descriptor file\n");
+   printf (" sdfopen FILE      open a self-describing data file\n");
++  printf (" sdfctl NC [CTL [yes]] preview/save a conservative NetCDF XDF descriptor\n");
+   printf (" query ARG         show files, dimensions, config, and status\n");
+   printf (" set ARG VALUE     change analysis or drawing options\n");
+   printf (" display EXPR      evaluate and draw an expression (short: d)\n");
+--- /dev/null
++++ b/src/camo_sdfctl.inc
+@@ -0,0 +1,314 @@
++/* Conservative XDF assistance, not a general CF-to-GrADS converter.
++ * Repair only unambiguous, regular 1-D longitude/latitude coordinates.
++ * Leave units, packing, missing values and Z/T/E to the existing SDF reader.
++ * Preview never writes or opens a GrADS dataset. Explicit "yes" saves only
++ * to a new path; no command reads stdin or overwrites an existing file.
++ */
++#include <errno.h>
++#include <fcntl.h>
++#include <float.h>
++#include <limits.h>
++#include <sys/stat.h>
++
++struct camo_sdf_axis {
++  int varid, dimid, reverse;
++  size_t count;
++  char dimname[NC_MAX_NAME+1];
++  double first, step;
++};
++
++static int camo_sdf_text(int ncid, int varid, const char *name,
++                         char *buf, size_t cap) {
++  nc_type type;
++  size_t n;
++  char *str = NULL;
++  int rc = nc_inq_att(ncid, varid, name, &type, &n);
++  buf[0] = '\0';
++  if (rc == NC_ENOTATT) return 0;
++  if (rc != NC_NOERR) return -1;
++  if (type == NC_CHAR && n < cap) {
++    if (nc_get_att_text(ncid, varid, name, buf) != NC_NOERR) return -1;
++    buf[n] = '\0';
++    if (strlen(buf) != n) return -1;
++    return 1;
++  }
++  if (type == NC_STRING && n == 1) {
++    if (nc_get_att_string(ncid, varid, name, &str) != NC_NOERR) return -1;
++    rc = str && strlen(str) < cap;
++    if (rc) strcpy(buf, str);
++    nc_free_string(1, &str);
++    return rc ? 1 : -1;
++  }
++  return -1;
++}
++
++static int camo_sdf_name(const char *s) {
++  if (!*s) return 0;
++  while (*s) {
++    if (!isalnum((unsigned char)*s) && *s != '_') return 0;
++    s++;
++  }
++  return 1;
++}
++
++static int camo_sdf_axis_kind(char *s) {
++  char unit[80];
++  size_t n = 0;
++  while (*s && n < sizeof(unit)-1) {
++    if (*s != '_' && *s != ' ') unit[n++] = tolower((unsigned char)*s);
++    s++;
++  }
++  unit[n] = '\0';
++  if (!strcmp(unit,"degreeseast") || !strcmp(unit,"degreeeast") ||
++      !strcmp(unit,"degreese") || !strcmp(unit,"degreee")) return 0;
++  if (!strcmp(unit,"degreesnorth") || !strcmp(unit,"degreenorth") ||
++      !strcmp(unit,"degreesn") || !strcmp(unit,"degreen")) return 1;
++  return -1;
++}
++
++static int camo_sdf_axis_read(int ncid, int varid, int kind,
++                             struct camo_sdf_axis *axis) {
++  int ndims, dims[NC_MAX_VAR_DIMS], rc;
++  nc_type type, atype;
++  size_t i, n, alen;
++  double *values = NULL, delta, expected, tol, fill;
++  char name[NC_MAX_NAME+1], standard[100];
++  const char *missing[] = {"_FillValue", "missing_value"};
++  if (nc_inq_var(ncid,varid,name,&type,&ndims,dims,NULL) != NC_NOERR) return 1;
++  if (ndims != 1) {
++    gaprnt(0,"sdfctl: 2-D/curvilinear coordinates need explicit grid handling; no ctl generated.\n");
++    return 1;
++  }
++  if (type == NC_CHAR || type == NC_STRING || type > NC_UINT64) return 1;
++  rc = camo_sdf_text(ncid,varid,"standard_name",standard,sizeof(standard));
++  if (rc < 0 || (rc && strcmp(standard,kind ? "latitude" : "longitude"))) {
++    gaprnt(0,"sdfctl: conflicting coordinate standard_name; cannot infer a geographic axis.\n");
++    return 1;
++  }
++  if (nc_inq_att(ncid,varid,"scale_factor",NULL,NULL) != NC_ENOTATT ||
++      nc_inq_att(ncid,varid,"add_offset",NULL,NULL) != NC_ENOTATT) {
++    gaprnt(0,"sdfctl: packed coordinates are not supported by this small helper.\n");
++    return 1;
++  }
++  if (nc_inq_dim(ncid,dims[0],axis->dimname,&n) != NC_NOERR ||
++      !camo_sdf_name(axis->dimname) || n == 0 || n > 1000000) {
++    gaprnt(0,"sdfctl: invalid/oversized coordinate dimension; no ctl generated.\n");
++    return 1;
++  }
++  values = malloc(n * sizeof(*values));
++  if (!values) return 1;
++  if (nc_get_var_double(ncid,varid,values) != NC_NOERR) goto fail;
++  for (i=0; i<2; i++) {
++    rc = nc_inq_att(ncid,varid,missing[i],&atype,&alen);
++    if (rc == NC_ENOTATT) continue;
++    if (rc != NC_NOERR || alen != 1 || atype == NC_CHAR || atype == NC_STRING ||
++        nc_get_att_double(ncid,varid,missing[i],&fill) != NC_NOERR) goto fail;
++    { size_t j; for (j=0;j<n;j++) if (values[j] == fill) goto fail; }
++  }
++  /* Endpoint spacing avoids amplifying one rounded float increment across
++     a long otherwise regular axis. Every stored coordinate is checked below. */
++  delta = n > 1 ? (values[n-1]-values[0])/(double)(n-1) : 1.0;
++  if (!isfinite(delta) || delta == 0 || (!kind && delta < 0)) goto fail;
++  for (i=0;i<n;i++) {
++    expected = values[0] + i*delta;
++    /* Allow coordinate storage roundoff, not irregular grids. */
++    tol = (type == NC_FLOAT ? 8*FLT_EPSILON : 64*DBL_EPSILON) *
++          fmax(1.0,fmax(fabs(expected),fabs(values[i])));
++    if (!isfinite(values[i]) || fabs(values[i]-expected) > tol ||
++        (i && (values[i]-values[i-1])*delta <= 0) ||
++        (kind && fabs(values[i]) > 90) || (!kind && fabs(values[i]) > 720)) goto fail;
++  }
++  if (!kind && n>1 && values[n-1]-values[0] > 360.000001) goto fail;
++  axis->varid = varid;
++  axis->dimid = dims[0];
++  axis->count = n;
++  axis->reverse = delta < 0;
++  axis->first = axis->reverse ? values[n-1] : values[0];
++  axis->step = fabs(delta);
++  free(values);
++  return 0;
++fail:
++  free(values);
++  gaprnt(0,"sdfctl: missing, non-finite, irregular or unsupported coordinate values; no ctl generated.\n");
++  return 1;
++}
++
++static int camo_sdf_token(char **args, char *out, size_t cap) {
++  size_t n=0;
++  char *s=*args;
++  if (!s) return 0;
++  while (isspace((unsigned char)*s)) s++;
++  if (!*s) return 0;
++  while (*s && !isspace((unsigned char)*s)) {
++    if (n+1>=cap) return -1;
++    out[n++]=*s++;
++  }
++  out[n]='\0';
++  *args=s;
++  return 1;
++}
++
++gaint gasdfctl(char *args) {
++  char input[241], output[241], answer[8], extra[8], absolute[PATH_MAX];
++  char units[100], line[512], candidate[1600], *base;
++  int ncid=-1, nvars, ndims, rank, ngroups=0, rc, v, j, kind, save=0, result=1;
++  int seen[2]={0,0}, oldopts=ncopts, oldcal=mfcmn.cal365, fd=-1;
++  int hasx, hasy, fields=0;
++  size_t length, written;
++  struct stat st;
++  struct camo_sdf_axis axis[2];
++  struct gafile *pfi=NULL;
++  struct gavar *pvar;
++  GASDFPARMS parms;
++  initparms(&parms);
++  if (camo_sdf_token(&args,input,sizeof(input)) != 1) goto usage;
++  rc=camo_sdf_token(&args,output,sizeof(output));
++  if (rc<0) goto usage;
++  if (!rc) {
++    base=strrchr(input,'/'); base=base ? base+1 : input;
++    if (strlen(base)+4>=sizeof(output)) goto usage;
++    snprintf(output,sizeof(output),"%s.ctl",base);
++  } else {
++    rc=camo_sdf_token(&args,answer,sizeof(answer));
++    if (rc<0 || (rc && strcmp(answer,"yes"))) goto usage;
++    save=rc==1;
++    if (camo_sdf_token(&args,extra,sizeof(extra)) != 0) goto usage;
++  }
++  if (!realpath(input,absolute) || stat(absolute,&st) || !S_ISREG(st.st_mode)) {
++    gaprnt(0,"sdfctl: input must be an existing local regular NetCDF file.\n");
++    goto done;
++  }
++  /* Existing XDF readers use short, whitespace-delimited path records. */
++  if (strlen(absolute)>240 || strpbrk(absolute," \t\r\n%^\"'") ||
++      strpbrk(output," \t\r\n%^\"'")) {
++    gaprnt(0,"sdfctl: path too long or containing unsupported descriptor characters; no ctl generated.\n");
++    goto done;
++  }
++  rc=nc_open(absolute,NC_NOWRITE,&ncid);
++  if (rc != NC_NOERR) {
++    snprintf(line,sizeof(line),"sdfctl: %s\n",nc_strerror(rc)); gaprnt(0,line); goto done;
++  }
++  rc=nc_inq_grps(ncid,&ngroups,NULL);
++  if ((rc != NC_NOERR && rc != NC_ENOTNC4) || ngroups) {
++    gaprnt(0,"sdfctl: hierarchical groups require explicit selection; no ctl generated.\n"); goto done;
++  }
++  if (nc_inq(ncid,&ndims,&nvars,NULL,NULL) != NC_NOERR || ndims>5) {
++    gaprnt(0,"sdfctl: extra dimensions require an explicit mapping; no ctl generated.\n"); goto done;
++  }
++  for (v=0;v<ndims;v++) {
++    if (nc_inq_dimlen(ncid,v,&length) != NC_NOERR || !length || length>INT_MAX) {
++      gaprnt(0,"sdfctl: empty/oversized dimension; no ctl generated.\n"); goto done;
++    }
++  }
++  for (v=0;v<nvars;v++) {
++    if (nc_inq_varndims(ncid,v,&rank) != NC_NOERR || rank>5) {
++      gaprnt(0,"sdfctl: variable rank exceeds the small helper's scope; no ctl generated.\n"); goto done;
++    }
++    if (camo_sdf_text(ncid,v,"units",units,sizeof(units)) != 1) continue;
++    kind=camo_sdf_axis_kind(units);
++    if (kind<0) continue;
++    if (++seen[kind]>1) {
++      gaprnt(0,"sdfctl: multiple longitude/latitude axes; cannot choose a grid safely.\n"); goto done;
++    }
++    if (camo_sdf_axis_read(ncid,v,kind,&axis[kind])) goto done;
++  }
++  if (!seen[0] || !seen[1] || axis[0].dimid == axis[1].dimid) {
++    gaprnt(0,"sdfctl: need separate, unambiguous 1-D lon/lat axes with degrees_east/degrees_north units.\n"); goto done;
++  }
++  if (axis[0].count > (size_t)(INT_MAX/8)/axis[1].count) {
++    gaprnt(0,"sdfctl: grid exceeds the legacy SDF reader's safe size; no ctl generated.\n"); goto done;
++  }
++  nc_close(ncid); ncid=-1;
++  if (initUnitSys() == Failure || !(pfi=getpfi())) goto done;
++  pfi->ncflg=1;
++  strcpy(pfi->name,absolute);
++  strcpy(pfi->dnam,absolute);
++  parms.isxdf=1;
++  parms.xsrch=parms.ysrch=parms.xsetup=parms.ysetup=0;
++  parms.xdimname=galloc(strlen(axis[0].dimname)+1,"sdfctlx");
++  parms.ydimname=galloc(strlen(axis[1].dimname)+1,"sdfctly");
++  if (!parms.xdimname || !parms.ydimname) goto done;
++  strcpy(parms.xdimname,axis[0].dimname);
++  strcpy(parms.ydimname,axis[1].dimname);
++  for (kind=0;kind<2;kind++) {
++    pfi->dnum[kind]=(gaint)axis[kind].count;
++    snprintf(line,sizeof(line),"linear %.17g %.17g",axis[kind].first,axis[kind].step);
++    if (deflin(line,pfi,kind,0)) goto done;
++  }
++  pfi->yrflg=axis[1].reverse;
++  if (fabs(axis[0].count*axis[0].step-360)<0.01) pfi->wrap=1;
++  gaprnt(2,"sdfctl: checking this X/Y mapping with the existing SDF metadata reader...\n");
++  if (gadsdf(pfi,parms) == Failure) {
++    gaprnt(0,"sdfctl: X/Y repair is insufficient. No ctl generated; inspect the reason above.\n"); goto done;
++  }
++  for (v=0;v<pfi->vnum;v++) {
++    pvar=pfi->pvar1+v; hasx=hasy=0;
++    if (!isalpha((unsigned char)pvar->abbrv[0]) || !camo_sdf_name(pvar->abbrv)) {
++      gaprnt(0,"sdfctl: a variable needs an explicit GrADS alias; no ctl generated.\n"); goto done;
++    }
++    for (j=0;j<v;j++) {
++      if (!strcmp(pvar->abbrv,pfi->pvar1[j].abbrv)) {
++        gaprnt(0,"sdfctl: shortened/case-folded variable aliases collide; explicit VARS aliases are needed.\n"); goto done;
++      }
++    }
++    for (kind=0;kind<pvar->nvardims;kind++) {
++      if (pvar->units[kind]==-100) hasx=1;
++      if (pvar->units[kind]==-101) hasy=1;
++    }
++    if (hasx && hasy) fields++;
++  }
++  if (!fields) {
++    gaprnt(0,"sdfctl: no usable horizontal data variable after mapping; no ctl generated.\n"); goto done;
++  }
++  rc=snprintf(candidate,sizeof(candidate),
++      "* CAMO supplemental descriptor: use xdfopen, NOT open.\n"
++      "* Z/T/E, missing values and packing come from the original NetCDF.\n"
++      "DSET %s\n%sXDEF %s %lu LINEAR %.17g %.17g\n"
++      "YDEF %s %lu LINEAR %.17g %.17g\n",
++      absolute,axis[1].reverse ? "OPTIONS yrev\n" : "",
++      axis[0].dimname,(unsigned long)axis[0].count,axis[0].first,axis[0].step,
++      axis[1].dimname,(unsigned long)axis[1].count,axis[1].first,axis[1].step);
++  if (rc<0 || (size_t)rc>=sizeof(candidate)) goto done;
++  gaprnt(2,"This descriptor may open the file. Metadata checked; data values are not certified.\n");
++  gaprnt(2,"--- ctl preview (XDF supplemental format) ---\n");
++  gaprnt(2,candidate);
++  gaprnt(2,"--- end ctl ---\n");
++  gaprnt(2,"Only GrADS-recognized variables are exposed; inspect q file and q dims after opening.\n");
++  if (!save) {
++    snprintf(line,sizeof(line),"Nothing written. To save: sdfctl %s %s yes\n",input,output);
++    gaprnt(2,line); result=0; goto done;
++  }
++  fd=open(output,O_WRONLY|O_CREAT|O_EXCL,0666);
++  if (fd<0) {
++    snprintf(line,sizeof(line),"sdfctl: cannot create %s: %s (existing files are never overwritten).\n",output,strerror(errno));
++    gaprnt(0,line); goto done;
++  }
++  length=strlen(candidate); written=0;
++  while (written<length) {
++    ssize_t n=write(fd,candidate+written,length-written);
++    if (n<0 && errno==EINTR) continue;
++    if (n<=0) break;
++    written+=(size_t)n;
++  }
++  rc=close(fd); fd=-1;
++  if (written!=length || rc) {
++    gaprnt(0,"sdfctl: write failed; a partial ctl may remain. Inspect/remove it before retrying.\n"); goto done;
++  }
++  snprintf(line,sizeof(line),"Saved %s. Try: xdfopen %s\n",output,output); gaprnt(2,line);
++  result=0;
++  goto done;
++usage:
++  gaprnt(0,"Usage: sdfctl INPUT.nc [OUTPUT.ctl [yes]]\n"
++           "Preview only unless literal yes is supplied. Never reads stdin or overwrites files.\n");
++done:
++  if (fd>=0) close(fd);
++  if (ncid>=0) nc_close(ncid);
++  if (pfi) {
++    if (pfi->ncid>=0) nc_close(pfi->ncid);
++    frepfi(pfi,0);
++  }
++  freeparms(&parms);
++  ncopts=oldopts;
++  mfcmn.cal365=oldcal;
++  return result;
++}

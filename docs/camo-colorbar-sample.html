@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CAMO 13-Step Colorbars</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f2;
+      --ink: #1f2624;
+      --muted: #66706c;
+      --line: #d8ded7;
+      --panel: #ffffff;
+      --panel-alt: #eef4f0;
+      --accent: #0d6f7f;
+      --accent-strong: #173d53;
+      --shadow: 0 18px 45px rgba(36, 45, 43, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background:
+        linear-gradient(180deg, rgba(246, 247, 242, 0.92), rgba(246, 247, 242, 1)),
+        repeating-linear-gradient(90deg, #e7ece7 0, #e7ece7 1px, transparent 1px, transparent 48px);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    .page {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 44px;
+    }
+
+    .masthead {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 20px;
+      align-items: end;
+      padding: 28px 0 22px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.1;
+      font-weight: 760;
+    }
+
+    .subtitle {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--accent-strong);
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) minmax(140px, 180px) auto auto;
+      gap: 12px;
+      align-items: end;
+      padding: 22px 0;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .field label,
+    .toggle span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    select,
+    input[type="number"] {
+      width: 100%;
+      height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--ink);
+      padding: 0 12px;
+    }
+
+    .toggle {
+      display: inline-grid;
+      grid-template-columns: auto auto;
+      gap: 9px;
+      align-items: center;
+      height: 42px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+    }
+
+    .copy-button {
+      height: 42px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--accent-strong);
+      color: #fff;
+      padding: 0 14px;
+      font-weight: 760;
+      cursor: pointer;
+    }
+
+    .copy-button:focus-visible,
+    select:focus-visible,
+    input:focus-visible {
+      outline: 3px solid rgba(13, 111, 127, 0.28);
+      outline-offset: 2px;
+    }
+
+    .preview {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+      gap: 16px;
+      align-items: stretch;
+      margin-bottom: 22px;
+    }
+
+    .preview-bar,
+    .command-panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .preview-bar {
+      display: grid;
+      overflow: hidden;
+      min-height: 108px;
+    }
+
+    .bar {
+      display: grid;
+      grid-template-columns: repeat(13, minmax(0, 1fr));
+      min-height: 72px;
+    }
+
+    .bar-segment {
+      min-width: 0;
+      border-right: 1px solid rgba(255, 255, 255, 0.58);
+    }
+
+    .bar-segment:last-child {
+      border-right: 0;
+    }
+
+    .ticks {
+      display: grid;
+      grid-template-columns: repeat(13, minmax(0, 1fr));
+      border-top: 1px solid var(--line);
+      background: #fbfcfa;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+    }
+
+    .tick {
+      min-width: 0;
+      padding: 8px 4px;
+      text-align: center;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .command-panel {
+      display: grid;
+      align-content: center;
+      gap: 8px;
+      padding: 18px;
+    }
+
+    .command-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .command {
+      margin: 0;
+      overflow-wrap: anywhere;
+      color: var(--accent-strong);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .palette-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .palette {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .palette-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-alt);
+    }
+
+    .palette-name {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.2;
+      font-weight: 760;
+      text-transform: capitalize;
+    }
+
+    .palette-command {
+      min-width: 0;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .swatches {
+      display: grid;
+      grid-template-columns: repeat(13, minmax(0, 1fr));
+      min-height: 124px;
+    }
+
+    .swatch {
+      display: grid;
+      align-content: end;
+      min-width: 0;
+      padding: 8px 4px;
+      color: var(--swatch-ink, #fff);
+      border-right: 1px solid rgba(255, 255, 255, 0.48);
+      text-align: center;
+    }
+
+    .swatch:last-child {
+      border-right: 0;
+    }
+
+    .swatch b,
+    .swatch span {
+      display: block;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    }
+
+    .swatch b {
+      font-size: 12px;
+      line-height: 1.1;
+    }
+
+    .swatch span {
+      margin-top: 3px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 10px;
+    }
+
+    .rgb-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+
+    .rgb-table th,
+    .rgb-table td {
+      border-top: 1px solid var(--line);
+      padding: 8px 10px;
+      text-align: left;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .rgb-table th {
+      width: 72px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    @media (max-width: 880px) {
+      .masthead,
+      .preview,
+      .palette-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .toolbar {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .copy-button {
+        grid-column: span 2;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .page {
+        width: min(100% - 20px, 1180px);
+        padding-top: 18px;
+      }
+
+      h1 {
+        font-size: 28px;
+      }
+
+      .toolbar {
+        grid-template-columns: 1fr;
+      }
+
+      .copy-button {
+        grid-column: auto;
+      }
+
+      .bar,
+      .ticks,
+      .swatches {
+        grid-template-columns: repeat(13, 34px);
+        overflow-x: auto;
+      }
+
+      .preview-bar,
+      .palette {
+        overflow-x: auto;
+      }
+
+      .swatches {
+        min-width: 442px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="masthead">
+      <div>
+        <h1>CAMO 13-Step Colorbars</h1>
+        <p class="subtitle">Viridis, plasma, magma, and cividis sampled for GrADS rbcols.</p>
+      </div>
+      <div class="badge">colors 16-28 by default</div>
+    </header>
+
+    <section class="toolbar" aria-label="Colorbar controls">
+      <div class="field">
+        <label for="paletteSelect">Palette</label>
+        <select id="paletteSelect"></select>
+      </div>
+      <div class="field">
+        <label for="startColor">Start color</label>
+        <input id="startColor" type="number" min="16" max="2036" value="16">
+      </div>
+      <label class="toggle">
+        <input id="reverseToggle" type="checkbox">
+        <span>Reverse</span>
+      </label>
+      <button class="copy-button" id="copyCommand" type="button">Copy command</button>
+    </section>
+
+    <section class="preview" aria-label="Selected colorbar">
+      <div class="preview-bar">
+        <div class="bar" id="previewBar"></div>
+        <div class="ticks" id="previewTicks"></div>
+      </div>
+      <div class="command-panel">
+        <div class="command-label">GrADS command</div>
+        <p class="command" id="commandText"></p>
+      </div>
+    </section>
+
+    <section class="palette-grid" id="paletteGrid" aria-label="Palette samples"></section>
+  </main>
+
+  <script>
+    const palettes = {
+      viridis: [
+        [68, 1, 84], [71, 44, 122], [59, 82, 139], [44, 113, 142],
+        [33, 144, 141], [39, 173, 129], [52, 191, 111], [66, 204, 90],
+        [85, 215, 69], [112, 224, 49], [149, 230, 39], [194, 223, 35],
+        [253, 231, 37]
+      ],
+      plasma: [
+        [13, 8, 135], [63, 4, 156], [106, 0, 168], [143, 13, 164],
+        [176, 42, 143], [204, 71, 120], [225, 100, 98], [240, 130, 78],
+        [249, 160, 58], [252, 190, 44], [249, 217, 36], [240, 241, 33],
+        [239, 248, 33]
+      ],
+      magma: [
+        [0, 0, 4], [22, 14, 62], [59, 15, 112], [93, 25, 135],
+        [128, 37, 130], [161, 54, 121], [191, 76, 117], [219, 105, 116],
+        [239, 138, 98], [251, 174, 81], [254, 206, 108], [252, 236, 172],
+        [252, 253, 191]
+      ],
+      cividis: [
+        [0, 34, 78], [0, 48, 100], [0, 63, 119], [25, 78, 126],
+        [51, 94, 124], [76, 110, 118], [101, 126, 109], [127, 143, 97],
+        [153, 160, 84], [178, 177, 70], [204, 194, 56], [229, 212, 40],
+        [254, 232, 55]
+      ]
+    };
+
+    const paletteSelect = document.getElementById("paletteSelect");
+    const startColor = document.getElementById("startColor");
+    const reverseToggle = document.getElementById("reverseToggle");
+    const previewBar = document.getElementById("previewBar");
+    const previewTicks = document.getElementById("previewTicks");
+    const commandText = document.getElementById("commandText");
+    const paletteGrid = document.getElementById("paletteGrid");
+    const copyCommand = document.getElementById("copyCommand");
+
+    function rgbToHex(rgb) {
+      return "#" + rgb.map((value) => value.toString(16).padStart(2, "0")).join("");
+    }
+
+    function rgbCss(rgb) {
+      return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+    }
+
+    function contrastInk(rgb) {
+      const luminance = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255;
+      return luminance > 0.62 ? "#1d2522" : "#ffffff";
+    }
+
+    function colorNumber(index) {
+      return Number(startColor.value || 16) + index;
+    }
+
+    function selectedColors() {
+      const colors = palettes[paletteSelect.value].slice();
+      return reverseToggle.checked ? colors.reverse() : colors;
+    }
+
+    function commandFor(name, start, reverse) {
+      const suffix = [
+        start === 16 ? "" : String(start),
+        reverse ? "reverse" : ""
+      ].filter(Boolean).join(" ");
+      return `set rgbmap ${name}${suffix ? " " + suffix : ""}`;
+    }
+
+    function renderPreview() {
+      const name = paletteSelect.value;
+      const start = Number(startColor.value || 16);
+      const colors = selectedColors();
+
+      previewBar.innerHTML = "";
+      previewTicks.innerHTML = "";
+
+      colors.forEach((rgb, index) => {
+        const segment = document.createElement("div");
+        segment.className = "bar-segment";
+        segment.style.background = rgbCss(rgb);
+        segment.title = `${colorNumber(index)} ${rgbToHex(rgb)} rgb(${rgb.join(", ")})`;
+        previewBar.appendChild(segment);
+
+        const tick = document.createElement("div");
+        tick.className = "tick";
+        tick.textContent = colorNumber(index);
+        previewTicks.appendChild(tick);
+      });
+
+      commandText.textContent = commandFor(name, start, reverseToggle.checked);
+    }
+
+    function renderPaletteGrid() {
+      paletteGrid.innerHTML = "";
+
+      Object.entries(palettes).forEach(([name, colors]) => {
+        const palette = document.createElement("article");
+        palette.className = "palette";
+
+        const head = document.createElement("div");
+        head.className = "palette-head";
+        head.innerHTML = `
+          <h2 class="palette-name">${name}</h2>
+          <div class="palette-command">set rgbmap ${name}</div>
+        `;
+
+        const swatches = document.createElement("div");
+        swatches.className = "swatches";
+
+        colors.forEach((rgb, index) => {
+          const swatch = document.createElement("div");
+          swatch.className = "swatch";
+          swatch.style.background = rgbCss(rgb);
+          swatch.style.setProperty("--swatch-ink", contrastInk(rgb));
+          swatch.innerHTML = `
+            <b>${16 + index}</b>
+            <span>${rgbToHex(rgb)}</span>
+          `;
+          swatch.title = `rgb(${rgb.join(", ")})`;
+          swatches.appendChild(swatch);
+        });
+
+        const table = document.createElement("table");
+        table.className = "rgb-table";
+        table.innerHTML = `
+          <tbody>
+            <tr><th>R</th><td>${colors.map((rgb) => rgb[0]).join(", ")}</td></tr>
+            <tr><th>G</th><td>${colors.map((rgb) => rgb[1]).join(", ")}</td></tr>
+            <tr><th>B</th><td>${colors.map((rgb) => rgb[2]).join(", ")}</td></tr>
+          </tbody>
+        `;
+
+        palette.append(head, swatches, table);
+        paletteGrid.appendChild(palette);
+      });
+    }
+
+    Object.keys(palettes).forEach((name) => {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      paletteSelect.appendChild(option);
+    });
+
+    paletteSelect.addEventListener("change", renderPreview);
+    startColor.addEventListener("input", renderPreview);
+    reverseToggle.addEventListener("change", renderPreview);
+    copyCommand.addEventListener("click", async () => {
+      const command = commandText.textContent;
+      try {
+        await navigator.clipboard.writeText(command);
+        copyCommand.textContent = "Copied";
+        setTimeout(() => {
+          copyCommand.textContent = "Copy command";
+        }, 1100);
+      } catch {
+        copyCommand.textContent = command;
+      }
+    });
+
+    renderPaletteGrid();
+    renderPreview();
+  </script>
+</body>
+</html>

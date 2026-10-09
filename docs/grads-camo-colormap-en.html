@@ -1,0 +1,1268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CAMO/GrADS colormaps and colorbar generator</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f7f8f5;
+  --fg: #1f2523;
+  --muted: #5e6965;
+  --line: #d8ded8;
+  --panel: #ffffff;
+  --soft: #eef4f1;
+  --code: #17201e;
+  --link: #0b6b61;
+  --accent: #145c6f;
+  --accent-2: #9b3f2f;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.62;
+}
+a { color: var(--link); }
+button, input, select, textarea { font: inherit; }
+.page { max-width: 1180px; margin: 0 auto; padding: 28px 20px 56px; }
+header { border-bottom: 1px solid var(--line); padding-bottom: 18px; margin-bottom: 22px; }
+.topbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.topbar a { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 6px 10px; text-decoration: none; }
+h1 { margin: 0 0 10px; font-size: 2.25rem; line-height: 1.18; }
+h2 { margin: 34px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); font-size: 1.55rem; }
+h3 { margin: 24px 0 10px; font-size: 1.16rem; }
+p { margin: 0.55rem 0; }
+.notice, .tool, .helper, .palette, .mini-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.notice { padding: 14px 16px; background: var(--soft); margin: 16px 0; }
+.tool { padding: 16px; margin: 18px 0 24px; }
+.controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.field { display: grid; gap: 5px; min-width: 0; }
+.field label, .check span { color: var(--muted); font-size: 0.78rem; font-weight: 700; }
+input, select, textarea { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--fg); }
+input, select { height: 40px; padding: 0 10px; }
+textarea { min-height: 230px; padding: 12px; resize: vertical; }
+.check { min-height: 40px; display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; background: #fff; }
+.check input { width: 18px; height: 18px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+button { min-height: 40px; border: 0; border-radius: 8px; padding: 0 12px; background: var(--accent); color: white; font-weight: 700; cursor: pointer; }
+button.secondary { background: #e6eee9; color: var(--fg); border: 1px solid var(--line); }
+.preview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 420px); gap: 14px; margin-top: 16px; }
+.preview-bar { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; }
+.bar { display: grid; min-height: 72px; }
+.segment { min-width: 0; border-right: 1px solid rgba(255,255,255,0.55); }
+.segment:last-child { border-right: 0; }
+.ticks { display: grid; border-top: 1px solid var(--line); color: var(--muted); font: 0.72rem/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #fbfcfb; }
+.tick { min-width: 0; padding: 8px 4px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.output { margin: 0; min-height: 150px; overflow: auto; border-radius: 8px; background: var(--code); color: #edf6f2; padding: 12px; font: 0.82rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; }
+.summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.mini-card { padding: 12px; }
+.mini-card b { display: block; margin-bottom: 4px; }
+.palette-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.palette { padding: 10px; }
+.palette-title { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin-bottom: 8px; font-weight: 700; }
+.palette-title small { color: var(--muted); font-weight: 500; }
+.swatches { display: grid; grid-template-columns: repeat(13, 1fr); height: 30px; border-radius: 7px; overflow: hidden; border: 1px solid rgba(0,0,0,0.08); }
+.hexrow { font-size: 0.72rem; color: var(--muted); margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.helper { padding: 14px; margin-top: 14px; }
+.helper summary { cursor: pointer; font-weight: 700; }
+.links { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.links a { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 6px 10px; text-decoration: none; }
+footer { margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.92rem; }
+@media (max-width: 900px) {
+  .controls, .preview, .summary-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 620px) {
+  .page { padding: 20px 14px 42px; }
+  h1 { font-size: 1.75rem; }
+  .controls, .preview, .summary-grid { grid-template-columns: 1fr; }
+  .bar, .ticks { min-width: 520px; }
+  .preview-bar { overflow-x: auto; }
+}
+</style>
+</head>
+<body>
+<main class="page">
+<header>
+  <nav class="topbar" aria-label="page links">
+    <a href="grads-camo-colormap-ja.html">日本語</a>
+    <a href="#generator">Generator</a>
+    <a href="#palettes">Palettes</a>
+    <a href="#references">References</a>
+  </nav>
+  <h1>CAMO/GrADS colormaps and colorbar generator</h1>
+  <p>This page lists the 13-color colormaps implemented by the CAMO build of GrADS and generates copyable GrADS commands for shaded plots and labeled color bars.</p>
+  <div class="notice"><p>The implementation samples Matplotlib built-in colormaps into 13 discrete colors. Use set rgbmap before set gxout shaded or grfill. Appending _r or adding reverse reverses the color order.</p></div>
+</header>
+
+<section id="generator" class="tool">
+  <h2>Command and colorbar generator</h2>
+  <p>Enter a value range such as -15 15 3 to generate clevs, ccols, labels, and a camo_cbarn.gs call. The optional white range is useful for anomaly maps.</p>
+  <div class="controls" aria-label="colorbar controls">
+    <div class="field"><label for="paletteSelect">Palette</label><select id="paletteSelect"></select></div>
+    <div class="field"><label for="startColor">Start color</label><input id="startColor" type="number" min="16" max="2036" value="16"></div>
+    <label class="check"><input id="reverseToggle" type="checkbox"><span>Reverse</span></label>
+    <div class="field"><label for="exprInput">Expression</label><input id="exprInput" value="tmp"></div>
+    <div class="field"><label for="minValue">Minimum</label><input id="minValue" type="number" step="any" value="-15"></div>
+    <div class="field"><label for="maxValue">Maximum</label><input id="maxValue" type="number" step="any" value="15"></div>
+    <div class="field"><label for="intervalValue">Interval</label><input id="intervalValue" type="number" step="any" value="3"></div>
+    <label class="check"><input id="whiteToggle" type="checkbox" checked><span>Use white range</span></label>
+    <div class="field"><label for="whiteLow">White from</label><input id="whiteLow" type="number" step="any" value="-3"></div>
+    <div class="field"><label for="whiteHigh">White to</label><input id="whiteHigh" type="number" step="any" value="3"></div>
+    <div class="field"><label for="whiteColor">White color no.</label><input id="whiteColor" type="number" min="0" max="2036" value="15"></div>
+    <div class="field"><label for="orientSelect">Colorbar orientation</label><select id="orientSelect"><option value="horizontal">horizontal</option><option value="vertical">vertical</option></select></div>
+    <div class="field"><label for="boxInput">Colorbar box x1 x2 y1 y2</label><input id="boxInput" value="1.2 9.2 0.55 0.82"></div>
+    <div class="field"><label for="fgColor">Text/outline color</label><input id="fgColor" type="number" min="0" max="2036" value="1"></div>
+    <div class="field"><label for="labelSize">Label size</label><input id="labelSize" type="number" step="any" value="0.10"></div>
+  </div>
+  <div class="actions">
+    <button id="copyScript" type="button">Copy generated script</button>
+    <button id="copyCommand" type="button" class="secondary">Copy set rgbmap</button>
+  </div>
+  <div class="preview">
+    <div class="preview-bar">
+      <div class="bar" id="previewBar"></div>
+      <div class="ticks" id="previewTicks"></div>
+    </div>
+    <pre class="output" id="scriptOutput" aria-label="Generated GrADS script"></pre>
+  </div>
+  <details class="helper">
+    <summary>camo_cbarn.gs helper script</summary>
+    <div class="actions"><button id="copyCbarn" type="button" class="secondary">Copy camo_cbarn.gs</button></div>
+    <pre class="output" id="cbarnSource"></pre>
+  </details>
+</section>
+
+<section id="notes">
+  <h2>Implementation notes</h2>
+  <div class="summary-grid">
+    <div class="mini-card"><b>Implemented command</b><p>set rgbmap NAME [start] [reverse] loads 13 colors into rbcols, starting at color 16 by default.</p></div>
+    <div class="mini-card"><b>Fixed levels</b><p>For comparable figures, use set clevs and set ccols instead of relying on automatic levels.</p></div>
+    <div class="mini-card"><b>White center</b><p>The generator uses set rgb on a white color number, then assigns that color to bins whose midpoint is inside the selected range.</p></div>
+  </div>
+</section>
+
+<section id="palettes">
+  <h2>Implemented 13-color palettes</h2>
+  <div id="paletteSections"></div>
+</section>
+
+<section id="references">
+  <h2>References and publication links</h2>
+  <div class="links">
+    <a href="grads-reference-en.html">GrADS English reference</a>
+    <a href="https://camo.fpark.tmu.ac.jp/grads-reference-en.html">fpark English reference</a>
+    <a href="https://camo.fpark.tmu.ac.jp/grads-color-en.html">fpark color page used by help color</a>
+    <a href="https://github.com/camo3climate/grads-camo">GitHub repository</a>
+    <a href="https://matplotlib.org/stable/gallery/color/colormap_reference.html">Matplotlib colormap reference</a>
+  </div>
+</section>
+
+<footer>
+  <p>Generated from the CAMO/GrADS implementation tables. The helper script source is included for copy-and-paste use.</p>
+</footer>
+</main>
+<script>
+const PALETTES = {
+  "viridis": [
+    "#440154",
+    "#481f70",
+    "#443983",
+    "#3b528b",
+    "#31688e",
+    "#287c8e",
+    "#21918c",
+    "#20a486",
+    "#35b779",
+    "#5ec962",
+    "#90d743",
+    "#c8e020",
+    "#fde725"
+  ],
+  "plasma": [
+    "#0d0887",
+    "#3a049a",
+    "#5c01a6",
+    "#7e03a8",
+    "#9c179e",
+    "#b52f8c",
+    "#cc4778",
+    "#de5f65",
+    "#ed7953",
+    "#f89540",
+    "#fdb42f",
+    "#fbd524",
+    "#f0f921"
+  ],
+  "inferno": [
+    "#000004",
+    "#110a30",
+    "#320a5e",
+    "#57106e",
+    "#781c6d",
+    "#9a2865",
+    "#bc3754",
+    "#d84c3e",
+    "#ed6925",
+    "#f98e09",
+    "#fbb61a",
+    "#f4df53",
+    "#fcffa4"
+  ],
+  "magma": [
+    "#000004",
+    "#100b2d",
+    "#2c115f",
+    "#51127c",
+    "#721f81",
+    "#932b80",
+    "#b73779",
+    "#d8456c",
+    "#f1605d",
+    "#fc8961",
+    "#feb078",
+    "#fed799",
+    "#fcfdbf"
+  ],
+  "cividis": [
+    "#00224e",
+    "#003170",
+    "#2a3f6d",
+    "#434e6c",
+    "#575d6d",
+    "#6a6c71",
+    "#7d7c78",
+    "#918b78",
+    "#a59c74",
+    "#bcae6c",
+    "#d2c060",
+    "#e9d34e",
+    "#fee838"
+  ],
+  "Greys": [
+    "#ffffff",
+    "#f5f5f5",
+    "#e9e9e9",
+    "#d9d9d9",
+    "#c6c6c6",
+    "#b0b0b0",
+    "#959595",
+    "#7e7e7e",
+    "#686868",
+    "#515151",
+    "#333333",
+    "#181818",
+    "#000000"
+  ],
+  "Purples": [
+    "#fcfbfd",
+    "#f3f2f8",
+    "#e8e7f2",
+    "#dadaeb",
+    "#c6c7e1",
+    "#b2b2d5",
+    "#9e9ac8",
+    "#8a86bf",
+    "#796eb2",
+    "#6950a3",
+    "#5b3495",
+    "#4d1a89",
+    "#3f007d"
+  ],
+  "Blues": [
+    "#f7fbff",
+    "#e7f0fa",
+    "#d6e6f4",
+    "#c6dbef",
+    "#abd0e6",
+    "#8dc1dd",
+    "#6aaed6",
+    "#4f9bcb",
+    "#3787c0",
+    "#2070b4",
+    "#105ba4",
+    "#08468b",
+    "#08306b"
+  ],
+  "Greens": [
+    "#f7fcf5",
+    "#ebf7e7",
+    "#dbf1d6",
+    "#c7e9c0",
+    "#aedea7",
+    "#92d28f",
+    "#73c476",
+    "#52b365",
+    "#37a055",
+    "#228a44",
+    "#0b7734",
+    "#005f26",
+    "#00441b"
+  ],
+  "Oranges": [
+    "#fff5eb",
+    "#feebd8",
+    "#fedfc0",
+    "#fdd0a2",
+    "#fdb97d",
+    "#fda35c",
+    "#fd8c3b",
+    "#f57520",
+    "#e95e0d",
+    "#d84801",
+    "#b63c02",
+    "#993103",
+    "#7f2704"
+  ],
+  "Reds": [
+    "#fff5f0",
+    "#fee7dc",
+    "#fdd4c2",
+    "#fcbba1",
+    "#fca082",
+    "#fc8565",
+    "#fb694a",
+    "#f34a36",
+    "#e32f27",
+    "#ca181d",
+    "#b11218",
+    "#900a12",
+    "#67000d"
+  ],
+  "YlOrBr": [
+    "#ffffe5",
+    "#fffaca",
+    "#fff1ae",
+    "#fee390",
+    "#fece65",
+    "#feb643",
+    "#fe9829",
+    "#f27d1b",
+    "#e1640e",
+    "#cb4b02",
+    "#a93c03",
+    "#882f05",
+    "#662506"
+  ],
+  "YlOrRd": [
+    "#ffffcc",
+    "#fff3af",
+    "#ffe793",
+    "#fed976",
+    "#febf5a",
+    "#fea647",
+    "#fd8c3c",
+    "#fc6330",
+    "#f43d25",
+    "#e2191c",
+    "#c90823",
+    "#a80026",
+    "#800026"
+  ],
+  "OrRd": [
+    "#fff7ec",
+    "#feedd4",
+    "#fee2bb",
+    "#fdd49e",
+    "#fdc38d",
+    "#fdac76",
+    "#fc8c59",
+    "#f3724e",
+    "#e7533a",
+    "#d62f1e",
+    "#be0f0a",
+    "#a10000",
+    "#7f0000"
+  ],
+  "PuRd": [
+    "#f7f4f9",
+    "#ece7f2",
+    "#e1d4e8",
+    "#d4b9da",
+    "#cda0cd",
+    "#d085c0",
+    "#df64af",
+    "#e43d96",
+    "#df2179",
+    "#cd1256",
+    "#a90649",
+    "#870037",
+    "#67001f"
+  ],
+  "RdPu": [
+    "#fff7f3",
+    "#fee8e5",
+    "#fdd7d4",
+    "#fcc5c0",
+    "#fbacb9",
+    "#f98dae",
+    "#f767a1",
+    "#e5459a",
+    "#cd238f",
+    "#ad017e",
+    "#8b0179",
+    "#690173",
+    "#49006a"
+  ],
+  "BuPu": [
+    "#f7fcfd",
+    "#e8f1f7",
+    "#d6e4f0",
+    "#bfd3e6",
+    "#a9c4de",
+    "#98b0d3",
+    "#8c95c6",
+    "#8c79b8",
+    "#8b5daa",
+    "#88409c",
+    "#831f86",
+    "#6f0a6b",
+    "#4d004b"
+  ],
+  "GnBu": [
+    "#f7fcf0",
+    "#e8f6e2",
+    "#daf0d4",
+    "#ccebc5",
+    "#b4e2ba",
+    "#99d7ba",
+    "#7accc4",
+    "#5dbbce",
+    "#42a6cc",
+    "#2a8bbe",
+    "#1373b2",
+    "#085a9d",
+    "#084081"
+  ],
+  "PuBu": [
+    "#fff7fb",
+    "#f2ecf5",
+    "#e3e0ee",
+    "#d0d1e6",
+    "#b4c4df",
+    "#96b6d7",
+    "#73a9cf",
+    "#4a98c5",
+    "#2685bb",
+    "#056faf",
+    "#046198",
+    "#034e7b",
+    "#023858"
+  ],
+  "YlGnBu": [
+    "#ffffd9",
+    "#f3fabf",
+    "#e1f3b2",
+    "#c6e9b4",
+    "#97d6b9",
+    "#6bc6be",
+    "#40b5c4",
+    "#299dc1",
+    "#1f80b8",
+    "#225da8",
+    "#24419a",
+    "#1b2c80",
+    "#081d58"
+  ],
+  "PuBuGn": [
+    "#fff7fb",
+    "#f2e9f4",
+    "#e3dded",
+    "#d0d1e6",
+    "#b4c4df",
+    "#91b6d7",
+    "#66a9cf",
+    "#4698c5",
+    "#258bae",
+    "#028189",
+    "#017369",
+    "#015f4d",
+    "#014636"
+  ],
+  "BuGn": [
+    "#f7fcfd",
+    "#ebf7fa",
+    "#ddf2f3",
+    "#ccece6",
+    "#aadfd3",
+    "#88d1bd",
+    "#65c2a3",
+    "#4db585",
+    "#37a266",
+    "#228a44",
+    "#0b7734",
+    "#005f26",
+    "#00441b"
+  ],
+  "YlGn": [
+    "#ffffe5",
+    "#fafdc8",
+    "#edf8b2",
+    "#d9f0a3",
+    "#bce395",
+    "#9cd687",
+    "#77c679",
+    "#53b466",
+    "#379e54",
+    "#228343",
+    "#0b713b",
+    "#005c32",
+    "#004529"
+  ],
+  "PiYG": [
+    "#8e0152",
+    "#bb1675",
+    "#d5579d",
+    "#e897c4",
+    "#f5c4e1",
+    "#fce4f0",
+    "#f7f7f6",
+    "#e9f5d6",
+    "#c7e89f",
+    "#9acd61",
+    "#6dad36",
+    "#468a20",
+    "#276419"
+  ],
+  "PRGn": [
+    "#40004b",
+    "#6c2379",
+    "#8d579d",
+    "#ae8bbd",
+    "#ceb5d7",
+    "#ead9ea",
+    "#f6f7f6",
+    "#def1d9",
+    "#b7e2b1",
+    "#7ec37f",
+    "#449b52",
+    "#166f32",
+    "#00441b"
+  ],
+  "BrBG": [
+    "#543005",
+    "#824b09",
+    "#ad7021",
+    "#cfa256",
+    "#e7cf94",
+    "#f6eacb",
+    "#f4f5f5",
+    "#ceece8",
+    "#98d7cd",
+    "#58b0a7",
+    "#23867e",
+    "#015f56",
+    "#003c30"
+  ],
+  "PuOr": [
+    "#7f3b08",
+    "#aa5306",
+    "#d0730f",
+    "#ef9e3c",
+    "#fdc57f",
+    "#fde4c0",
+    "#f6f6f7",
+    "#dddfed",
+    "#bfbbda",
+    "#988dbe",
+    "#70589f",
+    "#4d207d",
+    "#2d004b"
+  ],
+  "RdGy": [
+    "#67001f",
+    "#a51429",
+    "#c94741",
+    "#e58368",
+    "#f7b799",
+    "#fde1d0",
+    "#fefefe",
+    "#e5e5e5",
+    "#c7c7c7",
+    "#9f9f9f",
+    "#737373",
+    "#444444",
+    "#1a1a1a"
+  ],
+  "RdBu": [
+    "#67001f",
+    "#a51429",
+    "#c94741",
+    "#e58368",
+    "#f7b799",
+    "#fcdfcf",
+    "#f6f7f7",
+    "#d7e8f1",
+    "#a7d0e4",
+    "#68abd0",
+    "#3783bb",
+    "#1c5c9f",
+    "#053061"
+  ],
+  "RdYlBu": [
+    "#a50026",
+    "#ce2827",
+    "#ea5739",
+    "#f98e52",
+    "#fdbf71",
+    "#fee597",
+    "#feffc0",
+    "#e5f5ef",
+    "#bde2ee",
+    "#8ec2dc",
+    "#6399c7",
+    "#416aaf",
+    "#313695"
+  ],
+  "RdYlGn": [
+    "#a50026",
+    "#ce2827",
+    "#ea5739",
+    "#f98e52",
+    "#fdbf6f",
+    "#fee593",
+    "#feffbe",
+    "#dff293",
+    "#b7e075",
+    "#84ca66",
+    "#4bb05c",
+    "#15904c",
+    "#006837"
+  ],
+  "Spectral": [
+    "#9e0142",
+    "#cb334d",
+    "#e95c47",
+    "#f98e52",
+    "#fdbf6f",
+    "#fee593",
+    "#ffffbe",
+    "#eaf79e",
+    "#bfe5a0",
+    "#86cfa5",
+    "#54aead",
+    "#3a7eb8",
+    "#5e4fa2"
+  ],
+  "coolwarm": [
+    "#3b4cc0",
+    "#5470de",
+    "#6f92f3",
+    "#8db0fe",
+    "#aac7fd",
+    "#c5d6f2",
+    "#dddcdc",
+    "#efcebd",
+    "#f7b89c",
+    "#f4987a",
+    "#e7745b",
+    "#d1493f",
+    "#b40426"
+  ],
+  "bwr": [
+    "#0000ff",
+    "#2a2aff",
+    "#5454ff",
+    "#8080ff",
+    "#aaaaff",
+    "#d4d4ff",
+    "#fffefe",
+    "#ffd4d4",
+    "#ffaaaa",
+    "#ff7e7e",
+    "#ff5454",
+    "#ff2a2a",
+    "#ff0000"
+  ],
+  "seismic": [
+    "#00004c",
+    "#000087",
+    "#0000c2",
+    "#0101ff",
+    "#5555ff",
+    "#a9a9ff",
+    "#fffdfd",
+    "#ffa9a9",
+    "#ff5555",
+    "#fe0000",
+    "#d30000",
+    "#aa0000",
+    "#800000"
+  ],
+  "twilight": [
+    "#e2d9e2",
+    "#b3c6ce",
+    "#7ba1c2",
+    "#6276ba",
+    "#5e43a5",
+    "#4e186f",
+    "#2f1436",
+    "#581647",
+    "#8e2c50",
+    "#b25652",
+    "#c68a6d",
+    "#d4bcac",
+    "#e2d9e2"
+  ],
+  "twilight_shifted": [
+    "#301437",
+    "#4e186f",
+    "#5e45a6",
+    "#6276ba",
+    "#7ca2c2",
+    "#b3c6ce",
+    "#e2d9e2",
+    "#d4bcac",
+    "#c6896c",
+    "#b25652",
+    "#8d2b50",
+    "#581647",
+    "#2f1436"
+  ],
+  "hsv": [
+    "#ff0000",
+    "#ff7c00",
+    "#fcf500",
+    "#84ff00",
+    "#08ff00",
+    "#00ff74",
+    "#00fff6",
+    "#008cff",
+    "#0010ff",
+    "#7200ff",
+    "#ee00ff",
+    "#ff0094",
+    "#ff0018"
+  ],
+  "ocean": [
+    "#008000",
+    "#006015",
+    "#00402a",
+    "#002040",
+    "#000055",
+    "#00206a",
+    "#004080",
+    "#006095",
+    "#0080aa",
+    "#42a0c0",
+    "#81c0d5",
+    "#c0e0ea",
+    "#ffffff"
+  ],
+  "terrain": [
+    "#333399",
+    "#176bd1",
+    "#00a0e8",
+    "#01cc66",
+    "#55dd77",
+    "#a9ee88",
+    "#fefe98",
+    "#d4c882",
+    "#aa926b",
+    "#815e56",
+    "#ab938e",
+    "#d5c9c7",
+    "#ffffff"
+  ],
+  "gist_earth": [
+    "#000000",
+    "#0e2076",
+    "#1c4d7a",
+    "#2b737e",
+    "#368770",
+    "#409456",
+    "#5ea04b",
+    "#87aa55",
+    "#aab35c",
+    "#bdab62",
+    "#ceab85",
+    "#e6c7bc",
+    "#fdfbfb"
+  ],
+  "cubehelix": [
+    "#000000",
+    "#181027",
+    "#192d48",
+    "#16534c",
+    "#2b6f39",
+    "#607a2f",
+    "#a1794a",
+    "#cc7c86",
+    "#d490c6",
+    "#c6b4ee",
+    "#c3d9f3",
+    "#d9f2ef",
+    "#ffffff"
+  ],
+  "turbo": [
+    "#30123b",
+    "#434eba",
+    "#4685fa",
+    "#28bceb",
+    "#1ae4b6",
+    "#55fa76",
+    "#a4fc3c",
+    "#d9e436",
+    "#faba39",
+    "#fb7e21",
+    "#e4450a",
+    "#b91e02",
+    "#7a0403"
+  ],
+  "jet": [
+    "#000080",
+    "#0000df",
+    "#0028ff",
+    "#0080ff",
+    "#00d4ff",
+    "#36ffc1",
+    "#7dff7a",
+    "#c1ff36",
+    "#ffe600",
+    "#ff9400",
+    "#ff4700",
+    "#df0000",
+    "#800000"
+  ],
+  "rainbow": [
+    "#8000ff",
+    "#5641fd",
+    "#2c7ef7",
+    "#00b5eb",
+    "#2adddd",
+    "#54f6cb",
+    "#80ffb4",
+    "#abf69b",
+    "#d4dd80",
+    "#ffb360",
+    "#ff7e41",
+    "#ff4121",
+    "#ff0000"
+  ],
+  "nipy_spectral": [
+    "#000000",
+    "#820093",
+    "#0000b9",
+    "#0078dd",
+    "#00a4bb",
+    "#00a55d",
+    "#00bc00",
+    "#00f400",
+    "#ccf900",
+    "#ffc900",
+    "#ff2d00",
+    "#d70000",
+    "#cccccc"
+  ],
+  "gist_ncar": [
+    "#000080",
+    "#00298b",
+    "#00c6ff",
+    "#00fbb0",
+    "#26f000",
+    "#7cf500",
+    "#dbff20",
+    "#ffd801",
+    "#ff7006",
+    "#ff0047",
+    "#b326ff",
+    "#ef97f1",
+    "#fef8fe"
+  ],
+  "gray": [
+    "#000000",
+    "#151515",
+    "#2a2a2a",
+    "#404040",
+    "#555555",
+    "#6a6a6a",
+    "#808080",
+    "#959595",
+    "#aaaaaa",
+    "#c0c0c0",
+    "#d5d5d5",
+    "#eaeaea",
+    "#ffffff"
+  ],
+  "bone": [
+    "#000000",
+    "#12121a",
+    "#252533",
+    "#38384e",
+    "#4a4a67",
+    "#5d617d",
+    "#707b90",
+    "#8295a2",
+    "#95aeb5",
+    "#a9c8c8",
+    "#c6dada",
+    "#e2eded",
+    "#ffffff"
+  ],
+  "pink": [
+    "#1e0000",
+    "#603c3c",
+    "#845454",
+    "#a16868",
+    "#b97878",
+    "#c79186",
+    "#d0ac94",
+    "#d9c29f",
+    "#e1d7aa",
+    "#e9e9b6",
+    "#f1f1d1",
+    "#f8f8e9",
+    "#ffffff"
+  ],
+  "hot": [
+    "#0b0000",
+    "#420000",
+    "#790000",
+    "#b30000",
+    "#ea0000",
+    "#ff2200",
+    "#ff5c00",
+    "#ff9300",
+    "#ffca00",
+    "#ffff07",
+    "#ffff5a",
+    "#ffffac",
+    "#ffffff"
+  ],
+  "afmhot": [
+    "#000000",
+    "#2a0000",
+    "#540000",
+    "#800000",
+    "#aa2a00",
+    "#d45400",
+    "#ff8001",
+    "#ffab2b",
+    "#ffd455",
+    "#ffff81",
+    "#ffffab",
+    "#ffffd5",
+    "#ffffff"
+  ],
+  "copper": [
+    "#000000",
+    "#1a100a",
+    "#342115",
+    "#4f3220",
+    "#69422a",
+    "#835335",
+    "#9e6440",
+    "#b8744a",
+    "#d28555",
+    "#ed9660",
+    "#ffa66a",
+    "#ffb774",
+    "#ffc77f"
+  ],
+  "spring": [
+    "#ff00ff",
+    "#ff15ea",
+    "#ff2ad5",
+    "#ff40bf",
+    "#ff55aa",
+    "#ff6a95",
+    "#ff807f",
+    "#ff956a",
+    "#ffaa55",
+    "#ffc03f",
+    "#ffd52a",
+    "#ffea15",
+    "#ffff00"
+  ],
+  "summer": [
+    "#008066",
+    "#158a66",
+    "#2a9466",
+    "#40a066",
+    "#55aa66",
+    "#6ab466",
+    "#80c066",
+    "#95ca66",
+    "#aad466",
+    "#c0e066",
+    "#d5ea66",
+    "#eaf466",
+    "#ffff66"
+  ],
+  "autumn": [
+    "#ff0000",
+    "#ff1500",
+    "#ff2a00",
+    "#ff4000",
+    "#ff5500",
+    "#ff6a00",
+    "#ff8000",
+    "#ff9500",
+    "#ffaa00",
+    "#ffc000",
+    "#ffd500",
+    "#ffea00",
+    "#ffff00"
+  ],
+  "winter": [
+    "#0000ff",
+    "#0015f4",
+    "#002aea",
+    "#0040df",
+    "#0055d4",
+    "#006aca",
+    "#0080bf",
+    "#0095b4",
+    "#00aaaa",
+    "#00c09f",
+    "#00d594",
+    "#00ea8a",
+    "#00ff80"
+  ],
+  "cool": [
+    "#00ffff",
+    "#15eaff",
+    "#2ad5ff",
+    "#40bfff",
+    "#55aaff",
+    "#6a95ff",
+    "#807fff",
+    "#956aff",
+    "#aa55ff",
+    "#c03fff",
+    "#d52aff",
+    "#ea15ff",
+    "#ff00ff"
+  ]
+};
+const CATEGORIES = [
+  {
+    "id": "perceptually-uniform-sequential",
+    "title": "Perceptually uniform sequential",
+    "palettes": [
+      "viridis",
+      "plasma",
+      "inferno",
+      "magma",
+      "cividis"
+    ]
+  },
+  {
+    "id": "common-sequential",
+    "title": "Common sequential",
+    "palettes": [
+      "Greys",
+      "Purples",
+      "Blues",
+      "Greens",
+      "Oranges",
+      "Reds",
+      "YlOrBr",
+      "YlOrRd",
+      "OrRd",
+      "PuRd",
+      "RdPu",
+      "BuPu",
+      "GnBu",
+      "PuBu",
+      "YlGnBu",
+      "PuBuGn",
+      "BuGn",
+      "YlGn"
+    ]
+  },
+  {
+    "id": "diverging",
+    "title": "Diverging",
+    "palettes": [
+      "PiYG",
+      "PRGn",
+      "BrBG",
+      "PuOr",
+      "RdGy",
+      "RdBu",
+      "RdYlBu",
+      "RdYlGn",
+      "Spectral",
+      "coolwarm",
+      "bwr",
+      "seismic"
+    ]
+  },
+  {
+    "id": "cyclic-and-miscellaneous",
+    "title": "Cyclic and miscellaneous",
+    "palettes": [
+      "twilight",
+      "twilight_shifted",
+      "hsv",
+      "ocean",
+      "terrain",
+      "gist_earth",
+      "cubehelix",
+      "turbo",
+      "jet",
+      "rainbow",
+      "nipy_spectral",
+      "gist_ncar",
+      "gray",
+      "bone",
+      "pink",
+      "hot",
+      "afmhot",
+      "copper",
+      "spring",
+      "summer",
+      "autumn",
+      "winter",
+      "cool"
+    ]
+  }
+];
+const CBARN_SOURCE = "function main(args)\norient = subwrd(args,1)\nx1 = subwrd(args,2)\nx2 = subwrd(args,3)\ny1 = subwrd(args,4)\ny2 = subwrd(args,5)\ncstart = subwrd(args,6)\nncols = subwrd(args,7)\nfg = subwrd(args,8)\nlabsize = subwrd(args,9)\n\nif (orient = '')\n  say 'Usage: run camo_cbarn.gs vertical|horizontal x1 x2 y1 y2 cstart|shades ncols fg labsize [labels...]'\n  return\nendif\n\nif (labsize = '')\n  labsize = 0.10\nendif\n\nshade_mode = 0\nif (cstart = 'shades')\n  'query shades'\n  shdinfo = result\n  if (subwrd(shdinfo,1) = 'None')\n    say 'Cannot plot color bar: No shading information'\n    return\n  endif\n  shade_mode = 1\n  ncols = subwrd(shdinfo,5)\nendif\n\nnlab = 0\nlab = subwrd(args,10)\nwhile (lab != '')\n  nlab = nlab + 1\n  lab.nlab = lab\n  lab = subwrd(args,10+nlab)\nendwhile\n\nif (shade_mode = 1 & nlab = 0)\n  i = 1\n  while (i < ncols)\n    rec = sublin(shdinfo,i+1)\n    nlab = nlab + 1\n    lab.nlab = subwrd(rec,3)\n    i = i + 1\n  endwhile\nendif\n\nif (orient = 'vertical')\n  dy = (y2 - y1) / ncols\n  i = 0\n  while (i < ncols)\n    if (shade_mode = 1)\n      rec = sublin(shdinfo,i+2)\n      c = subwrd(rec,1)\n    else\n      c = cstart + i\n    endif\n    yy1 = y1 + dy * i\n    yy2 = y1 + dy * (i + 1)\n    'set line 'c\n    'draw recf 'x1' 'yy1' 'x2' 'yy2\n    i = i + 1\n  endwhile\n  'set line 'fg' 1 2'\n  'draw rec 'x1' 'y1' 'x2' 'y2\n\n  if (nlab > 0)\n    'set string 'fg' l 4 0'\n    'set strsiz 'labsize\n    i = 0\n    while (i < nlab)\n      j = i + 1\n      lab = lab.j\n      if (nlab = 1)\n        yy = (y1 + y2) / 2\n      else\n        yy = y1 + (y2 - y1) * i / (nlab - 1)\n      endif\n      xx = x2 + 0.08\n      'draw string 'xx' 'yy' 'lab\n      i = i + 1\n    endwhile\n  endif\nendif\n\nif (orient = 'horizontal')\n  dx = (x2 - x1) / ncols\n  i = 0\n  while (i < ncols)\n    if (shade_mode = 1)\n      rec = sublin(shdinfo,i+2)\n      c = subwrd(rec,1)\n    else\n      c = cstart + i\n    endif\n    xx1 = x1 + dx * i\n    xx2 = x1 + dx * (i + 1)\n    'set line 'c\n    'draw recf 'xx1' 'y1' 'xx2' 'y2\n    i = i + 1\n  endwhile\n  'set line 'fg' 1 2'\n  'draw rec 'x1' 'y1' 'x2' 'y2\n\n  if (nlab > 0)\n    'set string 'fg' c 4 0'\n    'set strsiz 'labsize\n    i = 0\n    while (i < nlab)\n      j = i + 1\n      lab = lab.j\n      if (nlab = 1)\n        xx = (x1 + x2) / 2\n      else\n        xx = x1 + (x2 - x1) * i / (nlab - 1)\n      endif\n      yy = y1 - 0.17\n      'draw string 'xx' 'yy' 'lab\n      i = i + 1\n    endwhile\n  endif\nendif\n\nreturn";
+const TEXT = {"copyScript": "Copy generated script", "copyCbarn": "Copy camo_cbarn.gs", "copyCommand": "Copy set rgbmap", "copied": "Copied", "badRange": "Check min, max, and interval."};
+
+const el = (id) => document.getElementById(id);
+const paletteSelect = el('paletteSelect');
+const startColor = el('startColor');
+const reverseToggle = el('reverseToggle');
+const exprInput = el('exprInput');
+const minValue = el('minValue');
+const maxValue = el('maxValue');
+const intervalValue = el('intervalValue');
+const whiteToggle = el('whiteToggle');
+const whiteLow = el('whiteLow');
+const whiteHigh = el('whiteHigh');
+const whiteColor = el('whiteColor');
+const orientSelect = el('orientSelect');
+const boxInput = el('boxInput');
+const fgColor = el('fgColor');
+const labelSize = el('labelSize');
+const previewBar = el('previewBar');
+const previewTicks = el('previewTicks');
+const scriptOutput = el('scriptOutput');
+const cbarnSource = el('cbarnSource');
+
+function fmt(n) {
+  const rounded = Math.round((Number(n) + Number.EPSILON) * 1000000000) / 1000000000;
+  return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(/0+$/, '').replace(/\.$/, '');
+}
+function edges(min, max, step) {
+  const out = [];
+  if (!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(step) || step <= 0 || max <= min) return out;
+  let v = min;
+  let guard = 0;
+  while (v < max + step * 0.001 && guard < 400) {
+    out.push(Number(fmt(v)));
+    v += step;
+    guard += 1;
+  }
+  if (out[out.length - 1] !== max) out[out.length - 1] = max;
+  return out;
+}
+function colorIndex(i, bins) {
+  if (bins <= 1) return 0;
+  return Math.round(i * 12 / (bins - 1));
+}
+function selectedPaletteName() { return paletteSelect.value; }
+function rgbmapCommand() {
+  const start = Number(startColor.value || 16);
+  const parts = ['set rgbmap', selectedPaletteName()];
+  if (start !== 16) parts.push(String(start));
+  if (reverseToggle.checked) parts.push('reverse');
+  return parts.join(' ');
+}
+function build() {
+  const min = Number(minValue.value), max = Number(maxValue.value), step = Number(intervalValue.value);
+  const e = edges(min, max, step);
+  if (e.length < 2) {
+    scriptOutput.textContent = TEXT.badRange;
+    previewBar.innerHTML = '';
+    previewTicks.innerHTML = '';
+    return;
+  }
+  const bins = e.length - 1;
+  const start = Number(startColor.value || 16);
+  const wlo = Math.min(Number(whiteLow.value), Number(whiteHigh.value));
+  const whi = Math.max(Number(whiteLow.value), Number(whiteHigh.value));
+  const wcol = Number(whiteColor.value || 15);
+  const colors = PALETTES[selectedPaletteName()];
+  const ccols = [];
+  const previewColors = [];
+  for (let i = 0; i < bins; i += 1) {
+    const mid = (e[i] + e[i + 1]) / 2;
+    const white = whiteToggle.checked && mid >= wlo && mid <= whi;
+    const pidx = colorIndex(i, bins);
+    ccols.push(white ? wcol : start + pidx);
+    previewColors.push(white ? '#ffffff' : colors[pidx]);
+  }
+  previewBar.style.gridTemplateColumns = `repeat(${bins}, minmax(0, 1fr))`;
+  previewTicks.style.gridTemplateColumns = `repeat(${e.length}, minmax(0, 1fr))`;
+  previewBar.innerHTML = previewColors.map((c, i) => `<div class="segment" title="${fmt(e[i])} to ${fmt(e[i + 1])}" style="background:${c}"></div>`).join('');
+  previewTicks.innerHTML = e.map(v => `<div class="tick">${fmt(v)}</div>`).join('');
+  const clevs = e.slice(1, -1).map(fmt).join(' ');
+  const labels = e.map(fmt).join(' ');
+  const expr = exprInput.value.trim() || 'EXPR';
+  const box = boxInput.value.trim() || '1.2 9.2 0.55 0.82';
+  const lines = [
+    '* CAMO/GrADS colormap and labeled colorbar',
+    `'set grads off'`,
+    whiteToggle.checked ? `'set rgb ${wcol} 255 255 255'` : null,
+    `'${rgbmapCommand()}'`,
+    `'set gxout shaded'`,
+    clevs ? `'set clevs ${clevs}'` : null,
+    `'set ccols ${ccols.join(' ')}'`,
+    `'d ${expr}'`,
+    `'run work/wind-demo/scripts/camo_cbarn.gs ${orientSelect.value} ${box} shades ${bins} ${fgColor.value || 1} ${labelSize.value || 0.10} ${labels}'`
+  ].filter(Boolean);
+  scriptOutput.textContent = lines.join('\n');
+}
+function renderPalettes() {
+  paletteSelect.innerHTML = Object.keys(PALETTES).map(name => `<option value="${name}">${name}</option>`).join('');
+  paletteSelect.value = PALETTES.RdBu ? 'RdBu' : Object.keys(PALETTES)[0];
+  const container = el('paletteSections');
+  container.innerHTML = CATEGORIES.map(cat => `
+    <section id="${cat.id}">
+      <h3>${cat.title}</h3>
+      <div class="palette-grid">
+        ${cat.palettes.map(name => `
+          <article class="palette" id="palette-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}">
+            <div class="palette-title"><span>${name}</span><small>13 colors</small></div>
+            <div class="swatches" aria-label="13-color sample for ${name}">
+              ${PALETTES[name].map(c => `<div title="${c}" style="background:${c}"></div>`).join('')}
+            </div>
+            <div class="hexrow">${PALETTES[name].join(' ')}</div>
+          </article>`).join('')}
+      </div>
+    </section>`).join('');
+}
+async function copyText(text, button, original) {
+  try {
+    await navigator.clipboard.writeText(text);
+    button.textContent = TEXT.copied;
+    setTimeout(() => { button.textContent = original; }, 1200);
+  } catch (err) {
+    button.textContent = text;
+  }
+}
+renderPalettes();
+cbarnSource.textContent = CBARN_SOURCE;
+['change', 'input'].forEach(eventName => {
+  document.querySelectorAll('input, select').forEach(node => node.addEventListener(eventName, build));
+});
+el('copyScript').addEventListener('click', () => copyText(scriptOutput.textContent, el('copyScript'), TEXT.copyScript));
+el('copyCommand').addEventListener('click', () => copyText(rgbmapCommand(), el('copyCommand'), TEXT.copyCommand));
+el('copyCbarn').addEventListener('click', () => copyText(CBARN_SOURCE, el('copyCbarn'), TEXT.copyCbarn));
+build();
+</script>
+</body>
+</html>

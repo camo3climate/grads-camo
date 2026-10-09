@@ -1,0 +1,22 @@
+--- a/configure.ac
++++ b/configure.ac
+@@ -696,6 +696,19 @@ if test "$have_udunits" = "no" -a "$ga_dyn_supplibs" = "yes" ; then
+   ])
+ fi
+ 
++if test "$have_udunits" = "yes" ; then
++  if test "x$UDUNITS_LIBS" = "x" ; then
++    if test "x$UDUNITS2_LIBS" != "x" ; then
++      UDUNITS_LIBS="$UDUNITS2_LIBS"
++    else
++      UDUNITS_LIBS="-ludunits2"
++    fi
++  fi
++  if test "x$UDUNITS_CFLAGS" = "x" -a "x$UDUNITS2_CFLAGS" != "x" ; then
++    UDUNITS_CFLAGS="$UDUNITS2_CFLAGS"
++  fi
++fi
++
+ 
+ # * * * HDF4 * * *
+ echo 

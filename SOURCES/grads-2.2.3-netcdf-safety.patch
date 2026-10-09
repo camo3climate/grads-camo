@@ -1,0 +1,1055 @@
+--- a/src/gasdf.c
++++ b/src/gasdf.c
+@@ -27,6 +27,8 @@
+ #include <string.h>
+ #include <math.h>
+ #include <ctype.h>
++#include <limits.h>
++#include <float.h>
+ #include "grads.h"
+ #include "gasdf.h"
+ #if USENETCDF==1
+@@ -94,6 +96,15 @@
+ 
+   rc = gadsdf(pfi, parms);
+   if (rc==Failure) {
++    gaprnt(1,"sdfopen: data were not changed. For a safe descriptor preview, try:\n");
++    gaprnt(1,"  sdfctl INPUT.nc [OUTPUT.ctl [yes]]\n");
++    if (strlen(pathname)<=240) {
++      snprintf(pout,1255,"  Try: sdfctl %s\n",pathname);
++      gaprnt(1,pout);
++    }
++    gaprnt(1,"  Some grids/calendars need an explicit descriptor or preprocessing;\n");
++    gaprnt(1,"  a preview is not a promise that every NetCDF layout is supported.\n");
++    close_sdf(pfi);
+     frepfi (pfi, 0) ;
+     freeparms (&parms);
+     return Failure ;
+@@ -175,6 +186,7 @@
+   /* get metadata from the descriptor file */
+   rc = gadxdf(pfi, &parms) ;
+   if (rc==Failure) {
++    close_sdf(pfi);
+     freeparms(&parms);
+     frepfi (pfi, 0) ;
+     return Failure ;
+@@ -213,6 +225,7 @@
+   if (rc==Failure) {
+     snprintf(pout,1255, "SDF Descriptor file %s was not successfully opened & parsed.\n", pfi->dnam) ;
+     gaprnt(0, pout) ;
++    close_sdf(pfi);
+     frepfi (pfi, 0) ;
+     freeparms(&parms);
+     if (pcm->fnum <= 1) { 
+@@ -731,6 +744,15 @@
+ 	  gaprnt(0,"  Documentation is at http://cola.gmu.edu/grads/gadoc/SDFdescriptorfile.html\n"); 
+ 	  return Failure;
+ 	}
++        if (strcasecmp((char*)attr->value,"standard") &&
++            strcasecmp((char*)attr->value,"gregorian") &&
++            strcasecmp((char*)attr->value,"proleptic_gregorian")) {
++          snprintf(pout,1255,"SDF calendar error: '%s' is not supported for automatic time decoding\n",
++                   (char*)attr->value);
++          gaprnt(0,pout);
++          gaprnt(0,"  GrADS will not silently treat this as the standard calendar.\n");
++          return Failure;
++        }
+       }
+       /* set dimension size */
+       for (i=0;i<pfi->nsdfdims;i++) {
+@@ -1069,8 +1091,57 @@
+ 	  tvals[5] = 0.0 ;
+ 	  tvals[6] = 1.0 ; /* one time-step files get a (meaningless) delta t of one minute */
+ 	} 
+-	if (time_units)  gree(time_units,"f1");
+-	if (trunc_units) gree(trunc_units,"f2") ;
++        /* Verify every NetCDF time against the inferred GrADS axis. Comparing
++           calendar dates (not equal day gaps) preserves genuine monthly data. */
++#if USENETCDF == 1
++        if (pfi->ncflg==1 && pfi->dnum[TINDEX]>1) {
++          size_t begin, nread, k, start[1], count[1];
++          double times[512], actual, expected, tolerance;
++          struct dt when;
++          int symbolic_months = compare_units("year",trunc_units)==Success ||
++                               !strncmp(time_units,"month",5) ||
++                               !strncmp(time_units,"common_year/12",14) ||
++                               !strncmp(time_units,"common_years/12",15);
++          converter = symbolic_months ? NULL : ut_get_converter(fromUnit,toUnit);
++          if (!symbolic_months && !converter) goto err2;
++          for (begin=0; begin<(size_t)pfi->dnum[TINDEX]; begin+=nread) {
++            nread = (size_t)pfi->dnum[TINDEX]-begin;
++            if (nread>512) nread=512;
++            start[0]=begin; count[0]=nread;
++            rc=nc_get_vara_double(pfi->ncid,Tcoord->ncvid,start,count,times);
++            if (rc!=NC_NOERR) {
++              handle_error(rc);
++              if (converter) { cv_free(converter); converter=NULL; }
++              goto err2;
++            }
++            for (k=0; k<nread; k++) {
++              if (symbolic_months) {
++                actual=times[k];
++                expected=time1+(time2-time1)*(double)(begin+k);
++                tolerance=1.0e-7+8.0*DBL_EPSILON*fabs(expected);
++              } else {
++                actual=cv_convert_double(converter,times[k]);
++                gr2t(tvals,(double)(begin+k+1),&when);
++                expected=ut_encode_time(when.yr,when.mo,when.dy,when.hr,when.mn,0.0);
++                tolerance=0.5; /* Floating point noise, not a hidden time shift. */
++              }
++              if (!isfinite(actual) || !isfinite(expected) || fabs(actual-expected)>tolerance) {
++                snprintf(pout,1255,"SDF time error: coordinate %lu does not match the inferred regular GrADS time axis\n",
++                         (unsigned long)(begin+k+1));
++                gaprnt(0,pout);
++                gaprnt(0,"  Irregular or sub-minute times need explicit preprocessing; no time values were changed.\n");
++                if (converter) { cv_free(converter); converter=NULL; }
++                goto err2;
++              }
++            }
++          }
++          if (converter) { cv_free(converter); converter=NULL; }
++        }
++#endif
++	if (time_units) { gree(time_units,"f1"); time_units=NULL; }
++	if (trunc_units) { gree(trunc_units,"f2"); trunc_units=NULL; }
++        if (fromUnit) { ut_free(fromUnit); fromUnit=NULL; }
++        if (toUnit) { ut_free(toUnit); toUnit=NULL; }
+       } /* end if udunits time */
+ 
+       /* Set scaling values */
+@@ -1447,6 +1518,8 @@
+   return Success;
+ 
+ err2:
++  if (fromUnit) ut_free(fromUnit);
++  if (toUnit) ut_free(toUnit);
+   if (time_units) gree(time_units,"f5");
+   if (trunc_units) gree(trunc_units,"f6") ;
+   if (tvals) gree(tvals,"f7");
+@@ -1503,7 +1576,7 @@
+ 
+ gaint isdvar(struct gafile *pfi, struct gavar *var, 
+ 	   gaint xdimid, gaint ydimid, gaint zdimid, gaint tdimid, gaint edimid) {
+-  gaint i, hasX, hasY, hasZ, hasT, hasE;
++  gaint i, j, hasX, hasY, hasZ, hasT, hasE;
+   struct gaattr *attr; 
+ 
+   /* Check if var is a coordinate variable */
+@@ -1536,6 +1609,15 @@
+ 	  var->vardimids[i] != zdimid && 
+ 	  var->vardimids[i] != tdimid && 
+ 	  var->vardimids[i] != edimid) {
++	for (j=0; j<pfi->nsdfdims; j++) {
++	  if (var->vardimids[i] == pfi->sdfdimids[j]) {
++	    snprintf(pout,1255,"SDF variable %s skipped: dimension %s (size %d) is not assigned to X/Y/Z/T/E\n",
++	             var->longnm,pfi->sdfdimnam[j],pfi->sdfdimsiz[j]);
++	    gaprnt(1,pout);
++	    gaprnt(1,"  A descriptor can select an explicit fixed index; GrADS will not guess which slice to use.\n");
++	    break;
++	  }
++	}
+ 	return Failure;
+       }
+     }
+@@ -2425,6 +2507,10 @@
+     }
+     pfi->nsdfdims = ndims;
+     pfi->vnum = nvars;
++    if (ndims<0 || ndims>100) {
++      gaprnt(0,"SDF metadata error: too many NetCDF dimensions (maximum 100)\n");
++      goto err1;
++    }
+     /* get NC coordinate information */
+     for (i=0; i<pfi->nsdfdims; i++) {
+       pfi->sdfdimids[i] = i;
+@@ -2433,6 +2519,10 @@
+ 	handle_error(status);
+ 	goto err1;
+       }
++      if (strlen(name)>=sizeof(pfi->sdfdimnam[i]) || size>INT_MAX) {
++        gaprnt(0,"SDF metadata error: NetCDF dimension name or size exceeds GrADS limits\n");
++        goto err1;
++      }
+       strcpy(&pfi->sdfdimnam[i][0],name);
+       pfi->sdfdimsiz[i] = (gaint)size;
+     }
+@@ -2446,7 +2536,7 @@
+ #endif
+ #if USENETCDF==1
+   if (pfi->ncflg==1) {
+-    read_ncatts (pfi->ncid, NC_GLOBAL, NULL, ngatts, pfi); 
++    if (read_ncatts(pfi->ncid, NC_GLOBAL, NULL, ngatts, pfi) == Failure) goto err2;
+   }
+ #endif
+   /* Get variable info and attributes */
+@@ -2511,6 +2601,11 @@
+ #endif
+ #if USENETCDF==1
+     if (pfi->ncflg==1) {
++      status = nc_inq_varndims(pfi->ncid,i,&pvar->nvardims);
++      if (status!=NC_NOERR || pvar->nvardims>16) {
++        gaprnt(0,"SDF metadata error: invalid NetCDF variable rank (maximum 16)\n");
++        goto err3;
++      }
+       status = nc_inq_var(pfi->ncid, i, name, NULL, &(pvar->nvardims), pvar->vardimids, &natts);
+       if (status != NC_NOERR) {
+ 	snprintf(pout,1255,"read_metadata: nc_inq_var failed to retrieve variable info for varid %d\n",i);
+@@ -2532,7 +2627,7 @@
+ #endif
+ #if USENETCDF==1
+     if (pfi->ncflg==1) {
+-      read_ncatts (pfi->ncid, pvar->ncvid, pvar->longnm, natts, pfi);
++      if (read_ncatts(pfi->ncid, pvar->ncvid, pvar->longnm, natts, pfi) == Failure) goto err3;
+     }
+ #endif
+ 
+@@ -2549,6 +2644,7 @@
+ 
+ err3:
+   if (pfi->pvar1) gree(pfi->pvar1,"f20");
++  pfi->pvar1 = NULL;
+   goto err2;
+ 
+ err2:
+@@ -2955,238 +3051,163 @@
+ 
+ /* read netcdf attribute information for a file or variable */
+ /* gaint read_ncatts (gaint cdfid, gaint varid, char *vname, gaint natts, struct gafile *pfi)  */
+-gaint read_ncatts (gaint cdfid, gaint varid, char *vname, gaint natts, struct gafile *pfi) 
+-{
++gaint read_ncatts (gaint cdfid, gaint varid, char *vname, gaint natts,
++                   struct gafile *pfi) {
+ #if USENETCDF == 1
+-struct gaattr *attrib=NULL,*newattrib=NULL;
+-gadouble *dval=NULL;
+-gafloat  *fval=NULL;
+-long   *ival=NULL;
+-short  *sval=NULL;
+-char   *bval=NULL;
+-char   *cval=NULL;
+-char  **strval=NULL;
+-char   *attname,*varname=NULL;
+-gaint   i,j,len,status,gotatt;
+-size_t  sz,attlen;
+-nc_type type;
+-
+-  /* Get the variable name */
+-  if ((varid == NC_GLOBAL) && (vname == NULL)) 
+-    len=8;
+-  else 
+-    len = strlen(vname)+2;
+-  sz = len;
+-  if ((varname=(char*)galloc(sz,"ncvname"))==NULL) {
+-    gaprnt(0,"read_ncatts: memory allocation failed for varname\n");
+-    return(Failure);
+-  }
+-  if ((varid == NC_GLOBAL) && (vname == NULL)) {
+-    strncpy(varname,"global",7);
+-  }
+-  else {
+-    strncpy(varname,vname,len);
++  struct gaattr *attrib, *newattrib;
++  const char *varname = (varid == NC_GLOBAL && vname == NULL) ? "global" : vname;
++  char attname[NC_MAX_NAME+1];
++  char **strings = NULL;
++  void *value = NULL;
++  gaint i, status;
++  size_t count, length, bytes, width;
++  nc_type type, storedtype;
++
++  if (!varname || strlen(varname) >= sizeof(newattrib->varname)) {
++    gaprnt(0,"SDF metadata error: variable name exceeds the supported attribute-name length\n");
++    return Failure;
+   }
+-  
+-  /* Loop through all attributes */
+-  for (i=0 ; i<natts ; i++) {
+-    /* Get current attribute's name */
+-    sz = MAX_NC_NAME+2;
+-    if ((attname=(char*)galloc(sz,"ncattname"))==NULL) {
+-      gaprnt(0,"read_ncatts: memory allocation failed for attname\n");
+-      gree(varname,"f55c");
+-      return(Failure);
++  attrib = pfi->attr;
++  while (attrib && attrib->next) attrib = attrib->next;
++  for (i=0; i<natts; i++) {
++    value = NULL;
++    strings = NULL;
++    status = nc_inq_attname(cdfid,varid,i,attname);
++    if (status != NC_NOERR) goto ncfail;
++    status = nc_inq_att(cdfid,varid,attname,&type,&count);
++    if (status != NC_NOERR) goto ncfail;
++    if (strlen(attname) >= sizeof(newattrib->name)) {
++      snprintf(pout,1255,"SDF metadata error: attribute name on %s is too long\n",varname);
++      gaprnt(0,pout);
++      return Failure;
+     }
+-    status = nc_inq_attname(cdfid, varid, i, attname);
+-    if (status != NC_NOERR) { 
+-      handle_error(status); 
+-      snprintf(pout,1255,"read_ncatts: ncattname failed for varid %d attribute number %d\n",varid,i);
+-      gaprnt(2,pout);
++    if ((!strcmp(attname,"units") || !strcmp(attname,"axis") ||
++         !strcmp(attname,"grads_dim") || !strcmp(attname,"positive") ||
++         !strcmp(attname,"calendar") || !strcmp(attname,"delta_t") ||
++         !strcmp(attname,"title") || !strcmp(attname,"long_name") ||
++         !strcmp(attname,"standard_name")) && type != NC_CHAR && type != NC_STRING) {
++      snprintf(pout,1255,"SDF metadata error: %s:%s must be a text attribute\n",varname,attname);
++      gaprnt(0,pout);
++      return Failure;
+     }
+-    else {
+-      attlen=0; type=0;
+-      /* Get current attribute's data type and length */
+-      status = nc_inq_att(cdfid, varid, attname, &type, &attlen);
+-      if (status != NC_NOERR) { 
+-	handle_error(status); 
+-	snprintf(pout,1255,"read_ncatts: nc_inq_att failed for varid %d attribute number %d\n",varid,i);
+-	gaprnt(2,pout);
+-      }
+-      else {
+-        if (attlen > 0) {
+-	  gotatt=0;
+-	  /* Retrieve the attribute's value */
+-	  switch (type) 
+-	    {
+-	    case (NC_BYTE):
+-	      sz = attlen*sizeof(char);
+-	      bval = (char *) galloc(sz,"bval");
+-  	      status = nc_get_att_schar(cdfid, varid, attname, (signed char*)bval);
+-              if (status != NC_NOERR) { 
+-		gree(bval,"f22"); 
+-		bval = NULL;
+-		handle_error(status); 
+-		snprintf(pout,1255,"read_ncatts: failed to get %s attribute %d type BYTE\n",varname,i);
+-		gaprnt(2,pout);
+-	      }
+-	      else { 
+-		gotatt=1; 
+-	      }
+-	      break;
+-	    case (NC_CHAR):
+-	      attlen = attlen + 1;
+-	      sz = attlen*sizeof(char);
+-	      cval = (char *) galloc(sz,"cval");
+-	      status = nc_get_att_text(cdfid, varid, attname, cval);
+-              if (status != NC_NOERR) { 
+-		gree(cval,"f24");
+-		cval = NULL;
+-		handle_error(status); 
+-		snprintf(pout,1255,"read_ncatts: failed to get %s attribute %d type CHAR\n",varname,i);
+-		gaprnt(2,pout);
+-	      }
+-	      else { 
+-		gotatt=1; 
+-		cval[attlen-1]='\0';
+-	      }
+-	      break;
+-	    case (NC_STRING):
+-              strval = (char**)galloc(attlen * sizeof(char*),"strval");
+-	      memset(strval, 0, attlen * sizeof(char*));  /* fill with zeros as in nc doc example */
+-	      status = nc_get_att_string(cdfid, varid, attname, strval); 
+-              if (status != NC_NOERR) { 
+-		gree(strval,"f24b"); strval = NULL;
+-		handle_error(status); 
+-		snprintf(pout,1255,"read_ncatts: failed to get %s attribute %d type STRING\n",varname,i);
+-		gaprnt(2,pout);
+-	      }
+-	      else { 
+-		gotatt=1; 
+-		/* NC_STRING attribute is an array (size attlen) of pointers to variable length strings. 
+-                   We only look at the first one, strval[0], and don't check if attlen>1.
+-		   We get the length of the first string, copy it into cval, then free the array */
+-                sz = 1 + (int)strlen(strval[0]);
+-	        cval = (char *)galloc(sz*sizeof(char),"cval");
+-                for (j=0; j<sz; j++) cval[j] = strval[0][j];
+-		cval[sz]='\0';
+-                nc_free_string(attlen, strval);
+-		gree(strval, NULL);
+-	      }
+-	      break;
+-	    case (NC_SHORT):
+-	      sz = attlen * sizeof(short);
+-	      sval = (short *) galloc(sz,"sval");
+-	      status = nc_get_att_short(cdfid, varid, attname, sval);
+-              if (status != NC_NOERR) { 
+-		gree(sval,"f26");
+-		sval=NULL;
+-		handle_error(status); 
+-		snprintf(pout,1255,"read_ncatts: failed to get %s attribute %d type SHORT\n",varname,i);
+-		gaprnt(2,pout);
+-	      }
+-	      else { 
+-		gotatt=1; 
+-	      }
+-	      break;
+-	    case (NC_LONG):
+-	      sz = attlen * sizeof(long);
+-	      ival = (long *) galloc(sz,"ival");
+-	      status = nc_get_att_long(cdfid, varid, attname, ival);
+-              if (status != NC_NOERR) { 
+-		gree(ival,"f28");
+-		ival = NULL;
+-		handle_error(status); 
+-		snprintf(pout,1255,"read_ncatts: failed to get %s attribute %d type LONG\n",varname,i);
+-		gaprnt(2,pout);
+-	      }
+-	      else { 
+-		gotatt=1; 
+-	      }
+-	      break;
+-	    case (NC_FLOAT):
+-	      sz = attlen * sizeof(gafloat);
+-	      fval = (gafloat *) galloc(sz,"fval");
+-	      status = nc_get_att_float(cdfid, varid, attname, fval);
+-              if (status != NC_NOERR) {
+-		gree(fval,"f30");
+-		fval = NULL;
+-		handle_error(status); 
+-		snprintf(pout,1255,"read_ncatts: failed to get %s attribute %d type FLOAT\n",varname,i);
+-		gaprnt(2,pout);
+-	      }
+-	      else { 
+-		gotatt=1; 
+-	      }
+-	      break;
+-	    case (NC_DOUBLE): 
+-	      sz = attlen * sizeof(gadouble);
+-	      dval = (gadouble *) galloc(sz,"dval");
+-	      status = nc_get_att_double(cdfid, varid, attname, dval);
+-              if (status != NC_NOERR) { 
+-		gree(dval,"f32");
+-		dval = NULL;
+-		handle_error(status); 
+-		snprintf(pout,1255,"read_ncatts: failed to get %s attribute %d type DOUBLE\n",varname,i);
+-		gaprnt(2,pout);
+-	      }
+-	      else { 
+-		gotatt=1; 
+-	      }
+-            break;
+-	    default:
+-	      snprintf(pout,1255,"read_ncatts: %s attribute %d type %d not supported\n",varname,i,type);
+-	      gaprnt(2,pout);
+-	    };
+-	  
+-	  if (gotatt) {
+-	    /* Successfully extracted the attribute, so add a link to the list */
+-	    sz = sizeof(struct gaattr);
+-	    if ((newattrib = (struct gaattr *) galloc(sz,"newattr")) == NULL) {
+-	      snprintf(pout,1255,"read_ncatts: memory allocation failed when adding attribute number %d\n",i);
+-	      gaprnt(2,pout);
+-	      if (bval) { gree(bval,"f33"); bval = NULL; }
+-	      if (cval) { gree(cval,"f34"); cval = NULL; }
+-	      if (sval) { gree(sval,"f35"); sval = NULL; }
+-	      if (ival) { gree(ival,"f36"); ival = NULL; }
+-	      if (fval) { gree(fval,"f37"); fval = NULL; }
+-	      if (dval) { gree(dval,"f38"); dval = NULL; }
+-	    }
+-	    else { 
+-	      if (pfi->attr) { /* some attributes already exist */
+-		/* advance to end of chain */
+-		attrib = pfi->attr;
+-		while (attrib->next != NULL) attrib = attrib->next;
+-		/* hang new attribute on end of chain */
+-		attrib->next = newattrib;
+-	      }
+-	      else {
+-		/* new attribute is first link in chain */
+-		pfi->attr = newattrib;
+-	      }
+-	      newattrib->next = NULL;
+-	      strcpy(newattrib->varname,varname);
+-	      strcpy(newattrib->name,attname);
+-	      newattrib->len  = attlen;
+-	      newattrib->nctype = (gaint)type;
+-	      if      (type == NC_BYTE)   newattrib->value = bval;
+-	      else if (type == NC_CHAR)   newattrib->value = cval;
+-	      else if (type == NC_STRING) newattrib->value = cval;
+-	      else if (type == NC_SHORT)  newattrib->value = sval;
+-	      else if (type == NC_LONG)   newattrib->value = ival;
+-	      else if (type == NC_FLOAT)  newattrib->value = fval;
+-	      else if (type == NC_DOUBLE) newattrib->value = dval;
+-	    }
+-	  } /* end of if (gotatt) statement */
+-	} /* end of if statement for attlen > 0 */
+-      } /* end of if-else statement for getting attribute type and length */
+-    } /* end of if-else statement for getting attribute name */
+-    gree(attname,"f39a");
+-  } /* end of for loop on i */
+-  gree(varname,"f39b");
+-  return (Success);
+-#endif 
+-}
++    if (type==NC_STRING && count!=1 &&
++        (!strcmp(attname,"units") || !strcmp(attname,"axis") ||
++         !strcmp(attname,"grads_dim") || !strcmp(attname,"positive") ||
++         !strcmp(attname,"calendar") || !strcmp(attname,"delta_t"))) {
++      snprintf(pout,1255,"SDF metadata error: %s:%s must be one string, not a string array\n",varname,attname);
++      gaprnt(0,pout);
++      return Failure;
++    }
++    if ((!strcmp(attname,"_FillValue") || !strcmp(attname,"missing_value") ||
++         !strcmp(attname,"scale_factor") || !strcmp(attname,"add_offset") ||
++         !strcmp(attname,"slope") || !strcmp(attname,"intercept")) && count != 1) {
++      snprintf(pout,1255,"SDF metadata error: %s:%s must be scalar for GrADS\n",varname,attname);
++      gaprnt(0,pout);
++      return Failure;
++    }
++    if ((!strcmp(attname,"_FillValue") || !strcmp(attname,"missing_value") ||
++         !strcmp(attname,"scale_factor") || !strcmp(attname,"add_offset") ||
++         !strcmp(attname,"slope") || !strcmp(attname,"intercept")) &&
++        (type==NC_CHAR || type<NC_BYTE || type>NC_UINT64)) {
++      snprintf(pout,1255,"SDF metadata error: %s:%s must be a numeric attribute\n",varname,attname);
++      gaprnt(0,pout);
++      return Failure;
++    }
++    if (!count) continue;
++    storedtype = type;
++    length = count;
++    switch (type) {
++      case NC_BYTE:   width = sizeof(signed char); break;
++      case NC_CHAR:   width = sizeof(char); length++; break;
++      case NC_SHORT:  width = sizeof(short); break;
++      case NC_INT:    width = sizeof(int); break;
++      case NC_FLOAT:  width = sizeof(gafloat); break;
++      case NC_DOUBLE: width = sizeof(gadouble); break;
++      case NC_STRING: width = sizeof(char*); break;
++      /* GrADS grids and numeric metadata are double precision. Preserve the
++         native integer representation separately when printing q attr. */
++      case NC_UBYTE: case NC_USHORT: case NC_UINT:
++      case NC_INT64: case NC_UINT64:
++        width = sizeof(gadouble); storedtype = NC_DOUBLE; break;
++      default:
++        snprintf(pout,1255,"Warning: SDF attribute %s:%s has unsupported type %d; ignored\n",
++                 varname,attname,type);
++        gaprnt(1,pout);
++        continue;
++    }
++    /* gaattr.len is an int; check it as well as the allocation product. */
++    if (length < count || length > INT_MAX || length > (size_t)-1 / width)
++      goto nomem;
++    bytes = length * width;
++    value = galloc(bytes,"ncattribute");
++    if (!value) goto nomem;
++    switch (type) {
++      case NC_BYTE: status = nc_get_att_schar(cdfid,varid,attname,value); break;
++      case NC_CHAR:
++        status = nc_get_att_text(cdfid,varid,attname,value);
++        ((char*)value)[count] = '\0';
++        break;
++      case NC_SHORT: status = nc_get_att_short(cdfid,varid,attname,value); break;
++      case NC_INT: status = nc_get_att_int(cdfid,varid,attname,value); break;
++      case NC_FLOAT: status = nc_get_att_float(cdfid,varid,attname,value); break;
++      case NC_STRING:
++        strings = value;
++        value = NULL;
++        memset(strings,0,bytes);
++        status = nc_get_att_string(cdfid,varid,attname,strings);
++        if (status != NC_NOERR) goto ncfail;
++        /* A coordinate attribute is a scalar string. Keep the first element
++           for compatibility, but diagnose discarded additional strings. */
++        if (count > 1) {
++          snprintf(pout,1255,"Warning: SDF attribute %s:%s is a string array; using its first string\n",
++                   varname,attname);
++          gaprnt(1,pout);
++        }
++        length = strings[0] ? strlen(strings[0])+1 : 1;
++        if (length > INT_MAX) goto nomem;
++        value = galloc(length,"ncstring");
++        if (!value) goto nomem;
++        memcpy(value,strings[0] ? strings[0] : "",length);
++        nc_free_string(count,strings);
++        gree(strings,"ncstrings");
++        strings = NULL;
++        storedtype = NC_CHAR;
++        break;
++      default: status = nc_get_att_double(cdfid,varid,attname,value); break;
++    }
++    if (status != NC_NOERR) goto ncfail;
++    newattrib = galloc(sizeof(*newattrib),"ncattrnode");
++    if (!newattrib) goto nomem;
++    memset(newattrib,0,sizeof(*newattrib));
++    strcpy(newattrib->varname,varname);
++    strcpy(newattrib->name,attname);
++    newattrib->len = (gaint)length;
++    newattrib->nctype = (gaint)storedtype;
++    newattrib->value = value;
++    if (attrib) attrib->next = newattrib;
++    else pfi->attr = newattrib;
++    attrib = newattrib;
++    value = NULL;
++  }
++  return Success;
+ 
++nomem:
++  gaprnt(0,"SDF metadata error: attribute allocation failed or size is too large\n");
++  goto fail;
++ncfail:
++  handle_error(status);
++  gaprnt(0,"SDF metadata error: unable to read NetCDF attribute\n");
++fail:
++  if (value) gree(value,"ncattrfail");
++  if (strings) {
++    nc_free_string(count,strings);
++    gree(strings,"ncstrfail");
++  }
++  return Failure;
++#else
++  return Failure;
++#endif
++}
+ 
+ /* find a dimension id, given the dimension name */
+ gaint find_dim (struct gafile *pfi, char *name) {
+--- a/src/gaio.c
++++ b/src/gaio.c
+@@ -23,6 +23,22 @@
+ #include <string.h>
+ #if USENETCDF == 1
+ #include "netcdf.h"
++/* Never pass one double to a NetCDF API that may return an attribute array. */
++static int camo_nc_scalar(int ncid, int varid, const char *name, double *value) {
++  size_t count;
++  nc_type type;
++  int rc = nc_inq_att(ncid,varid,name,&type,&count);
++  if (rc != NC_NOERR) return rc;
++  if (count != 1) {
++    fprintf(stderr,"NetCDF attribute %s must be scalar for GrADS; data not read\n",name);
++    return NC_EINVAL;
++  }
++  if (type==NC_CHAR || type<NC_BYTE || type>NC_UINT64) {
++    fprintf(stderr,"NetCDF attribute %s must be numeric for GrADS; data not read\n",name);
++    return NC_EINVAL;
++  }
++  return nc_get_att_double(ncid,varid,name,value);
++}
+ #endif
+ #if USEHDF ==1
+ #include "mfhdf.h"
+@@ -2427,7 +2443,8 @@
+     /* Do we have undef attribute names? */ 
+     if (pfi->undefattrflg) {
+       /* get the primary undef value */
+-      if (nc_get_att_double(pfi->ncid, pvr->ncvid, pfi->undefattr, &val) != NC_NOERR) {
++      if ((rc=camo_nc_scalar(pfi->ncid,pvr->ncvid,pfi->undefattr,&val)) != NC_NOERR) {
++        if (rc==NC_EINVAL) { ncopts=oldncopts; return 1; }
+ 	snprintf(pout,1255,"Warning: value for primary undef attribute \"%s\" not found\n",pfi->undefattr);
+ 	gaprnt(1,pout);
+         pvr->undef = pfi->undef;
+@@ -2437,7 +2454,8 @@
+       }
+       /* get the secondary undef value */
+       if (pfi->undefattrflg==2) {
+-        if (nc_get_att_double(pfi->ncid, pvr->ncvid, pfi->undefattr2, &val) != NC_NOERR) {
++        if ((rc=camo_nc_scalar(pfi->ncid,pvr->ncvid,pfi->undefattr2,&val)) != NC_NOERR) {
++          if (rc==NC_EINVAL) { ncopts=oldncopts; return 1; }
+ 	  snprintf(pout,1255,"Warning: value for secondary undef attribute \"%s\" not found\n",pfi->undefattr2);
+   	  gaprnt(1,pout);
+           pvr->undef2 = pfi->undef;
+@@ -2461,7 +2479,8 @@
+       pvr->add=0.0;
+       /* get the scale factor attribute value */
+       if (pfi->packflg == 1 || pfi->packflg == 2) {
+-	if (nc_get_att_double(pfi->ncid, pvr->ncvid, pfi->scattr, &val) != NC_NOERR) {
++	if ((rc=camo_nc_scalar(pfi->ncid,pvr->ncvid,pfi->scattr,&val)) != NC_NOERR) {
++          if (rc==NC_EINVAL) { ncopts=oldncopts; return 1; }
+ 	  gaprnt(1,"Warning: Could not retrieve scale factor -- setting to 1.0\n");
+ 	  pvr->scale = 1.0;
+ 	}
+@@ -2472,7 +2491,8 @@
+       /* get add offset if required */
+       if (pfi->packflg == 2 || pfi->packflg == 3) {
+ 	/* get the add offset attribute value */
+-	if (nc_get_att_double(pfi->ncid, pvr->ncvid, pfi->ofattr, &val) != NC_NOERR) {
++	if ((rc=camo_nc_scalar(pfi->ncid,pvr->ncvid,pfi->ofattr,&val)) != NC_NOERR) {
++          if (rc==NC_EINVAL) { ncopts=oldncopts; return 1; }
+ 	  gaprnt(1,"Warning: Could not retrieve add offset -- setting to 0.0\n");
+ 	  pvr->add = 0.0;
+ 	}
+@@ -4216,279 +4236,122 @@
+ /* Subroutine to print out NetCDF attributes */
+ gaint ncpattrs(gaint ncid, char *varnam, char *abbrv, gaint hdrflg, gaint fnum, char* ftit) {
+ #if USENETCDF == 1
+-gadouble *dattr_val;
+-gafloat  *fattr_val;
+-long   *iattr_val;
+-short  *sattr_val;
+-unsigned short  *usattr_val;
+-long long   *i64attr_val;
+-unsigned long long  *ui64attr_val;
+-char   *cattr_val;
+-char  **strattr_val;
+-char   *battr_val;
+-char attr_name[MAX_NC_NAME];
+-nc_type attr_dtype;
+-gaint error=0, aindx=-999, rc, i, j, varid, n_atts;
+-size_t sz,asize;
++  char name[NC_MAX_NAME+1];
++  const char *label;
++  void *value;
++  char **strings;
++  nc_type type;
++  int rc, varid, natts, a;
++  size_t i, count, width, bytes;
+ 
+-/* Get the variable id and number of attributes */
+   if (cmpwrd("global",abbrv)) {
+     varid = NC_GLOBAL;
+-    rc = nc_inq_natts(ncid,&n_atts);
+-    if (rc != NC_NOERR) error=1;
+-  }
+-  else {
+-    rc = nc_inq_varid(ncid, varnam, &varid);
+-    if (rc != NC_NOERR) error=1;
+-    if (!error) {
+-      rc = nc_inq_varnatts(ncid, varid, &n_atts);
+-      if (rc != NC_NOERR) error=1;
+-    }
++    rc = nc_inq_natts(ncid,&natts);
++  } else {
++    rc = nc_inq_varid(ncid,varnam,&varid);
++    if (rc == NC_NOERR) rc = nc_inq_varnatts(ncid,varid,&natts);
+   }
+-
+-  /* Print out the header */
+-  if (!error) {
+-    if (hdrflg) {
+-      if (n_atts > 0) {
+-	snprintf(pout,1255,"Native Attributes for File %i : %s \n",fnum,ftit);
+-	gaprnt(2,pout);
+-      }
+-    }
++  if (rc != NC_NOERR) {
++    snprintf(pout,1255,"NetCDF attribute query failed: %s\n",nc_strerror(rc));
++    gaprnt(0,pout);
++    return 0;
+   }
+-  else {
+-    return(0);  /* zero attributes printed */
++  if (hdrflg && natts) {
++    snprintf(pout,1255,"Native Attributes for File %i : %s \n",fnum,ftit);
++    gaprnt(2,pout);
+   }
+-  
+-  /* Loop through list of attributes, print the name of each one */ 
+-  for (aindx=0; aindx<n_atts; aindx++) {
+-
+-    /* Get current attribute's name */
+-    if (nc_inq_attname(ncid, varid, aindx, attr_name) == -1) {
+-      snprintf(pout,1255,"nc_inq_attname failed for variable %s, attribute number %d\n", abbrv, aindx);
+-      gaprnt(2,pout);
++  for (a=0; a<natts; a++) {
++    value = NULL;
++    rc = nc_inq_attname(ncid,varid,a,name);
++    if (rc != NC_NOERR) goto readfail;
++    rc = nc_inq_att(ncid,varid,name,&type,&count);
++    if (rc != NC_NOERR) goto readfail;
++    switch (type) {
++      case NC_BYTE: width=sizeof(signed char); label="Byte"; break;
++      case NC_UBYTE: width=sizeof(unsigned char); label="UByte"; break;
++      case NC_CHAR: width=sizeof(char); label="String"; break;
++      case NC_STRING: width=sizeof(char*); label="String"; break;
++      case NC_SHORT: width=sizeof(short); label="Int16"; break;
++      case NC_USHORT: width=sizeof(unsigned short); label="UInt16"; break;
++      case NC_INT: width=sizeof(int); label="Int32"; break;
++      case NC_UINT: width=sizeof(unsigned int); label="UInt32"; break;
++      case NC_INT64: width=sizeof(long long); label="Int64"; break;
++      case NC_UINT64: width=sizeof(unsigned long long); label="UInt64"; break;
++      case NC_FLOAT: width=sizeof(float); label="Float32"; break;
++      case NC_DOUBLE: width=sizeof(double); label="Float64"; break;
++      default:
++        snprintf(pout,1255,"Warning: NetCDF attribute %s:%s type %d is not supported\n",abbrv,name,type);
++        gaprnt(1,pout);
++        continue;
+     }
+-    else {
+-      /* Get current attribute's data type and length */
+-      if (nc_inq_att(ncid, varid, attr_name, &attr_dtype, &asize) == -1) {
+-	snprintf(pout,1255,"nc_inq_att failed for variable %s, attribute number %d\n", abbrv, aindx);
+-	gaprnt(2,pout);
++    if (count > ((size_t)-1-1)/width) goto nomem;
++    bytes = count*width+1;
++    value = galloc(bytes,"ncqueryattr");
++    if (!value) goto nomem;
++    memset(value,0,bytes);
++    switch (type) {
++      case NC_BYTE: rc=nc_get_att_schar(ncid,varid,name,value); break;
++      case NC_UBYTE: rc=nc_get_att_uchar(ncid,varid,name,value); break;
++      case NC_CHAR: rc=nc_get_att_text(ncid,varid,name,value); break;
++      case NC_STRING: rc=nc_get_att_string(ncid,varid,name,value); break;
++      case NC_SHORT: rc=nc_get_att_short(ncid,varid,name,value); break;
++      case NC_USHORT: rc=nc_get_att_ushort(ncid,varid,name,value); break;
++      case NC_INT: rc=nc_get_att_int(ncid,varid,name,value); break;
++      case NC_UINT: rc=nc_get_att_uint(ncid,varid,name,value); break;
++      case NC_INT64: rc=nc_get_att_longlong(ncid,varid,name,value); break;
++      case NC_UINT64: rc=nc_get_att_ulonglong(ncid,varid,name,value); break;
++      case NC_FLOAT: rc=nc_get_att_float(ncid,varid,name,value); break;
++      default: rc=nc_get_att_double(ncid,varid,name,value); break;
++    }
++    if (rc != NC_NOERR) {
++      if (type == NC_STRING) nc_free_string(count,value);
++      gree(value,"ncqueryfail");
++      goto readfail;
++    }
++    snprintf(pout,1255,"%s %s %s ",abbrv,label,name);
++    gaprnt(2,pout);
++    if (type == NC_CHAR) {
++      prntwrap(abbrv,name,value);
++    } else if (type == NC_STRING) {
++      strings = value;
++      if (!count) gaprnt(2,"\n");
++      for (i=0; i<count; i++) prntwrap(abbrv,name,strings[i] ? strings[i] : "");
++      nc_free_string(count,strings);
++    } else {
++      for (i=0; i<count; i++) {
++        switch (type) {
++          case NC_BYTE: snprintf(pout,1255,"%d",((signed char*)value)[i]); break;
++          case NC_UBYTE: snprintf(pout,1255,"%u",(unsigned int)((unsigned char*)value)[i]); break;
++          case NC_SHORT: snprintf(pout,1255,"%d",((short*)value)[i]); break;
++          case NC_USHORT: snprintf(pout,1255,"%u",(unsigned int)((unsigned short*)value)[i]); break;
++          case NC_INT: snprintf(pout,1255,"%d",((int*)value)[i]); break;
++          case NC_UINT: snprintf(pout,1255,"%u",((unsigned int*)value)[i]); break;
++          case NC_INT64: snprintf(pout,1255,"%lld",((long long*)value)[i]); break;
++          case NC_UINT64: snprintf(pout,1255,"%llu",((unsigned long long*)value)[i]); break;
++          case NC_FLOAT: snprintf(pout,1255,"%g",((float*)value)[i]); break;
++          default: snprintf(pout,1255,"%g",((double*)value)[i]); break;
++        }
++        gaprnt(2,pout);
++        if (i+1<count) gaprnt(2,",");
+       }
+-      else {
+-        if (asize>0) {
+-	  /* Retrieve and print out the attribute */
+-	  switch (attr_dtype) 
+-	    {
+-	    case (NC_BYTE):
+-	      sz = (asize+1) * sizeof (NC_BYTE);
+-	      battr_val = (char *) galloc(sz,"battrval1");
+-	      if (nc_get_att_schar(ncid, varid, attr_name, (signed char*)battr_val) == -1) {
+-		gaprnt(2,"nc_get_att_schar failed for type NC_BYTE\n"); 
+-	      }
+-	      else {
+-		gaprnt(2,abbrv); 
+-		gaprnt(2," Byte "); 
+-		gaprnt(2,attr_name); 
+-		gaprnt(2," ");
+-		for (i=0; i<asize; i++) {
+-		  snprintf(pout,1255,"%d ", (gaint)(battr_val[i])); 
+-		  gaprnt(2,pout);
+-		}
+-		gaprnt(2,"\n");
+-	      }
+-	      gree(battr_val,"f139");
+-	      break;
+-	    case (NC_CHAR):
+-	      sz = (asize+1) * sizeof (NC_CHAR);
+-	      cattr_val = (char *) galloc(sz,"cattrval1");
+-	      if (nc_get_att_text(ncid, varid, attr_name, cattr_val) == -1) {
+-		gaprnt(2,"nc_get_att_text failed for type NC_CHAR\n"); 
+-	      }
+-	      else {
+-		cattr_val[asize]='\0';
+-		gaprnt(2,abbrv); 
+-		gaprnt(2," String ");
+-		gaprnt(2,attr_name); 
+-		gaprnt(2," ");
+-		prntwrap(abbrv, attr_name, cattr_val);
+-	      }
+-	      gree(cattr_val,"f140");
+-	      break;
+-	    case (NC_STRING):
+-	      /* NC_STRING attribute is an array (size asize) of pointers to variable length strings. */
+-	      strattr_val = (char **) galloc(asize*sizeof(char*),"strattrval1");
+-	      if (nc_get_att_string(ncid, varid, attr_name, strattr_val) == -1) {
+-		gaprnt(2,"nc_get_att_string failed for type NC_STRING\n"); 
+-	      }
+-	      else {
+-	      /*  We only look at the first one, strattr_val[0], and don't check if asize>1.
+-		  We get the length of the first string, copy it into cval, then free the array */
+-                sz = 1 + strlen(strattr_val[0]);
+-                cattr_val = (char *) galloc(sz*sizeof(char),"cattrval1");
+-                for (j=0; j<sz; j++) cattr_val[j] = strattr_val[0][j];
+-                cattr_val[sz]='\0';
+-                nc_free_string(asize, strattr_val);
+-                gree(strattr_val, NULL);
+-                gaprnt(2,abbrv); 
+-                gaprnt(2," String ");
+-                gaprnt(2,attr_name); 
+-                gaprnt(2," ");
+-                prntwrap(abbrv, attr_name, cattr_val);
+-	      }
+-	      gree(cattr_val,"f140");
+-	      break;
+-	    case (NC_SHORT):
+-	      sz = asize * sizeof (NC_SHORT);
+-	      sattr_val = (short *) galloc(sz,"sattrval1");
+-	      if (nc_get_att_short(ncid, varid, attr_name, sattr_val) == -1) {
+-		gaprnt(2,"nc_get_att_short failed for type NC_SHORT\n"); 
+-	      }
+-	      else {
+-		gaprnt(2,abbrv); 
+-		gaprnt(2," Int16 "); 
+-		gaprnt(2,attr_name); 
+-		gaprnt(2," ");
+-		for (i=0; i<asize; i++) {
+-		  snprintf(pout,1255,"%d", (gaint)(sattr_val[i])); 
+-		  gaprnt(2,pout);
+-		  if (i<asize-1) gaprnt(2,",");
+-		}
+-		gaprnt(2,"\n");
+-	      }
+-	      gree(sattr_val,"f141");
+-	      break;
+-	    case (NC_USHORT):
+-	      sz = asize * sizeof (NC_USHORT);
+-	      usattr_val = (unsigned short *) galloc(sz,"usattrval");
+-	      if (nc_get_att_ushort(ncid, varid, attr_name, usattr_val) == -1) {
+-		gaprnt(2,"nc_get_att_ushort failed for type NC_USHORT\n"); 
+-	      }
+-	      else {
+-		gaprnt(2,abbrv); 
+-		gaprnt(2," UInt16 "); 
+-		gaprnt(2,attr_name); 
+-		gaprnt(2," ");
+-		for (i=0; i<asize; i++) {
+-		  snprintf(pout,1255,"%d", (gaint)(usattr_val[i])); 
+-		  gaprnt(2,pout);
+-		  if (i<asize-1) gaprnt(2,",");
+-		}
+-		gaprnt(2,"\n");
+-	      }
+-	      gree(usattr_val,"f141b");
+-	      break;
+-	    case (NC_LONG):
+-	      sz = asize * sizeof (NC_LONG);
+-	      iattr_val = (long *) galloc(sz,"iattrval1");
+-	      if (nc_get_att_long(ncid, varid, attr_name, iattr_val) == -1) {
+-		gaprnt(2,"nc_get_att_long failed for type NC_LONG\n"); 
+-	      }
+-	      else {
+-		gaprnt(2,abbrv); 
+-		gaprnt(2," Int32 "); 
+-		gaprnt(2,attr_name); 
+-		gaprnt(2," ");
+-		for (i=0; i<asize; i++) {
+-		  snprintf(pout,1255,"%ld", iattr_val[i]); 
+-		  gaprnt(2,pout);
+-		  if (i<asize-1) gaprnt(2,",");
+-		}
+-		gaprnt(2,"\n");
+-	      }
+-	      gree(iattr_val,"f142");
+-	      break;
+-	    case (NC_INT64):
+-	      sz = asize * sizeof (NC_INT64);
+-	      i64attr_val = (long long *) galloc(sz,"i64attrval");
+-	      if (nc_get_att_longlong(ncid, varid, attr_name, i64attr_val) == -1) {
+-		gaprnt(2,"nc_get_att_longlong failed for type NC_INT64\n"); 
+-	      }
+-	      else {
+-		gaprnt(2,abbrv); 
+-		gaprnt(2," Int64 "); 
+-		gaprnt(2,attr_name); 
+-		gaprnt(2," ");
+-		for (i=0; i<asize; i++) {
+-		  snprintf(pout,1255,"%lld", i64attr_val[i]); 
+-		  gaprnt(2,pout);
+-		  if (i<asize-1) gaprnt(2,",");
+-		}
+-		gaprnt(2,"\n");
+-	      }
+-	      gree(i64attr_val,"f142");
+-	      break;
+-	    case (NC_UINT64):
+-	      sz = asize * sizeof (NC_INT64);
+-	      ui64attr_val = (unsigned long long *) galloc(sz,"ui64attrval");
+-	      if (nc_get_att_ulonglong(ncid, varid, attr_name, ui64attr_val) == -1) {
+-		gaprnt(2,"nc_get_att_ulonglong failed for type NC_UINT64\n"); 
+-	      }
+-	      else {
+-		gaprnt(2,abbrv); 
+-		gaprnt(2," UInt64 "); 
+-		gaprnt(2,attr_name); 
+-		gaprnt(2," ");
+-		for (i=0; i<asize; i++) {
+-		  snprintf(pout,1255,"%lld", ui64attr_val[i]); 
+-		  gaprnt(2,pout);
+-		  if (i<asize-1) gaprnt(2,",");
+-		}
+-		gaprnt(2,"\n");
+-	      }
+-	      gree(ui64attr_val,"f142");
+-	      break;
+-	    case (NC_FLOAT):
+-	      sz = asize * sizeof (gafloat);
+-	      fattr_val = (gafloat *) galloc(sz,"fattrval1");
+-	      if (nc_get_att_float(ncid, varid, attr_name, fattr_val) == -1) {
+-		gaprnt(2,"nc_get_att_float failed for type NC_FLOAT\n"); 
+-	      }
+-	      else {
+-		gaprnt(2,abbrv); 
+-		gaprnt(2," Float32 "); 
+-		gaprnt(2,attr_name); 
+-		gaprnt(2," ");
+-		for (i=0; i<asize; i++) {
+-		  snprintf(pout,1255,"%g", fattr_val[i]);
+-		  gaprnt(2,pout);
+-		  if (i<asize-1) gaprnt(2,",");
+-		}
+-		gaprnt(2,"\n");
+-	      }
+-	      gree(fattr_val,"f143");
+-	      break;
+-	    case (NC_DOUBLE): 
+-	      sz = asize * sizeof (gadouble);
+-	      dattr_val = (gadouble *) galloc(sz,"dattrval1");
+-	      if (nc_get_att_double(ncid, varid, attr_name, dattr_val) == -1) {
+-		gaprnt(2,"nc_get_att_double failed for type NC_FLOAT\n"); 
+-	      }
+-	      else {
+-		gaprnt(2,abbrv); 
+-		gaprnt(2," Float64 "); 
+-		gaprnt(2,attr_name); 
+-		gaprnt(2," ");
+-		for (i=0; i<asize; i++) {
+-		  snprintf(pout,1255,"%g", dattr_val[i]); 
+-		  gaprnt(2,pout);
+-		  if (i<asize-1) gaprnt(2,",");
+-		}
+-		gaprnt(2,"\n");
+-	      }
+-	      gree(dattr_val,"f144");
+-	      break;
+-	    default:
+-	      snprintf(pout,1255,"Failed to retrieve attribute %d of type %d \n", aindx, attr_dtype);
+-	      gaprnt(2,pout);
+-	    };
+-	} /* end of if statement for asize >0 */
+-      } /* end of if-else statement for ncattinq */
+-    } /* end of if-else statement for ncattname */
+-  } /* end of for loop on aindx */
+-  return(n_atts);
+-#endif
++      gaprnt(2,"\n");
++    }
++    gree(value,"ncqueryattr");
++    continue;
++readfail:
++    snprintf(pout,1255,"NetCDF attribute read failed: %s\n",nc_strerror(rc));
++    gaprnt(0,pout);
++    return a;
++nomem:
++    gaprnt(0,"NetCDF attribute query: allocation failed or size is too large\n");
++    return a;
++  }
++  return natts;
++#else
+   gaprnt(0,"Reading NetCDF attributes is not supported in this build\n");
+-  return(1);
++  return 0;
++#endif
+ }
+ 
+ 
+ /* Subroutine to print out HDF attributes */

@@ -1,0 +1,589 @@
+Description: add CAMO limited re() compatibility wrapper
+Author: CAMO packaging maintainers
+Forwarded: no
+Last-Update: 2026-07-04
+
+--- grads-2.2.3/src/gafunc.c
++++ grads-2.2.3/src/gafunc.c
+@@ -54,6 +54,7 @@
+ gaint fftlp    (struct gafunc *, struct gastat *);
+ gaint ffaav    (struct gafunc *, struct gastat *);
+ gaint fflterp  (struct gafunc *, struct gastat *);
++gaint ffre      (struct gafunc *, struct gastat *);
+ gaint ffscor   (struct gafunc *, struct gastat *);
+ gaint fftcor   (struct gafunc *, struct gastat *);
+ gaint fftmav   (struct gafunc *, struct gastat *);
+@@ -183,6 +184,7 @@
+   if (cmpwrd("tregr",name)) fpntr = fftreg;  
+   if (cmpwrd("s2g1d",name)) fpntr = ffs2g1d;
+   if (cmpwrd("lterp",name)) fpntr = fflterp;
++  if (cmpwrd("re",name)) fpntr = ffre;
+   if (cmpwrd("amin",name)) fpntr = ffamin;    
+   if (cmpwrd("amax",name)) fpntr = ffamax;    
+   if (cmpwrd("aminlocx",name)) fpntr = ffaminlocx;    
+@@ -938,107 +940,208 @@
+ /* Performs a bi-linear interpolation between two grids, 
+    adapted from the external UDF lterp.
+ */ 
+-gaint fflterp (struct gafunc *pfc, struct gastat *pst) {
+-struct gastat pst2;
+-struct gagrid *pgr1,*pgr2;
+-gadouble (*i1conv) (gadouble *, gadouble);
+-gadouble (*i2conv) (gadouble *, gadouble);
+-gadouble *x1=NULL,*x2=NULL,*y1=NULL,*y2=NULL;
+-gadouble *x1b=NULL,*x2b=NULL,*y1b=NULL,*y2b=NULL;
+-gadouble *gr1,*gr2,*gxout=NULL,*gyout=NULL,*area1=NULL,*area2=NULL;
+-gadouble rad,w1,w2=0,alo,ahi,pct,minpct,tscl;
+-gaint rc,i,ii,j,jj,i2,ij,ij1,ij2,j2,error=0,opt;
+-gaint pxgbflg,pygbflg; 
+-gaint ib,ie,jb,je,maxgrid,icnt,indx,flag;
+-gadouble *area_box=NULL,*fld_box=NULL,tot_fld,tot_area;
+-char *gr1u,*gr2u;
+-struct gafile *pfi1,*pfi2;
+-gaint ic,jc,k,jcm1,jcp1,jcp2,bessel;
+-gadouble r,s,r1,r2,r3,s1,s2,s3,fijm1,fij,fijp1,fijp2,u,fr[4],del,del2,del3;
+-char uijm1,uij,uijp1,uijp2;
+-struct dt t1g1;
+-gadouble tval;
+-  
+-  rad = M_PI/180.0;
++static gaint gare_clean_token (char *src, char *dst, size_t dsz) {
++char *beg,*end;
++size_t len;
+ 
+-  if (pfc->argnum<2 || pfc->argnum>4) {
+-    gaprnt (0,"Error from LTERP:  Too many or too few args \n");
+-    gaprnt (0,"                    2 to 4 arguments expected \n");
+-    return (1);
+-  }
++  if (dst==NULL || dsz==0) return(1);
++  dst[0] = '\0';
++  if (src==NULL) return(1);
++  beg = src;
++  while (*beg==' ' || *beg=='\t' || *beg=='\'' || *beg=='\"') beg++;
++  end = beg + strlen(beg);
++  while (end>beg && (*(end-1)==' ' || *(end-1)=='\t' || *(end-1)=='\'' || *(end-1)=='\"')) end--;
++  len = (size_t)(end-beg);
++  if (len>=dsz) len = dsz-1;
++  memcpy(dst,beg,len);
++  dst[len] = '\0';
++  lowcas(dst);
++  return(0);
++}
+ 
+-  if (pfc->argnum>=3) {
+-    if (strcmp("bilin",pfc->argpnt[2])==0)  {opt = 0; bessel=0;}  /* bilinear interpolation */
+-    if (strcmp("bessel",pfc->argpnt[2])==0) {opt = 0; bessel=1;}  /* bilinear interpolation with bessel */
+-    if (strcmp("aave" ,pfc->argpnt[2])==0)   opt = 1;             /* area average */
+-    if (strcmp("amean",pfc->argpnt[2])==0)   opt = 2;             /* area mean */
++static gaint gare_is_method_token (char *src) {
++char tok[32];
+ 
+-    if (pfc->argnum==4) {
+-      if (getdbl(pfc->argpnt[3],&minpct)==NULL) {
+-	gaprnt (0,"Error from LTERP:  4th argument must be a real number between 0 and 100 \n");
+-	return(1);
++  if (gare_clean_token(src,tok,sizeof(tok))) return(0);
++  if (!strcmp(tok,"bl") || !strcmp(tok,"bilin")) return(1);
++  if (!strcmp(tok,"bs") || !strcmp(tok,"bessel")) return(1);
++  if (!strcmp(tok,"ba") || !strcmp(tok,"aave")) return(1);
++  if (!strcmp(tok,"ma") || !strcmp(tok,"amean")) return(1);
++  if (!strcmp(tok,"vt") || !strcmp(tok,"ig")) return(1);
++  if (!strcmp(tok,"gaus") || !strcmp(tok,"gauss") || !strcmp(tok,"gaussian")) return(1);
++  return(0);
++}
++
++static gaint gare_parse_re_methods (struct gafunc *pfc, gaint start,
++                                    gaint *opt, gaint *bessel,
++                                    gadouble *minpct, gaint *method_set) {
++gaint i;
++gadouble val;
++char tok[32];
++
++  for (i=start; i<pfc->argnum; i++) {
++    if (gare_clean_token(pfc->argpnt[i],tok,sizeof(tok))) return(1);
++    if (!strcmp(tok,"bl") || !strcmp(tok,"bilin")) {
++      *opt = 0; *bessel = 0; *method_set = 1;
++    }
++    else if (!strcmp(tok,"bs") || !strcmp(tok,"bessel")) {
++      *opt = 0; *bessel = 1; *method_set = 1;
++    }
++    else if (!strcmp(tok,"ba") || !strcmp(tok,"aave")) {
++      *opt = 1; *bessel = 0; *method_set = 1;
++    }
++    else if (!strcmp(tok,"ma")) {
++      *opt = 1; *bessel = 0; *method_set = 1;
++      if (i+1 >= pfc->argnum || getdbl(pfc->argpnt[i+1],&val)==NULL) {
++        gaprnt(0,"Error from RE: ma requires a minimum-area fraction argument\n");
++        return(1);
+       }
+-      if (minpct<0 || minpct>100) {
+-	gaprnt (0,"Error from LTERP:  4th argument must be between 0 and 100 \n");
+-	return(1);
++      if (val<0.0 || val>100.0) {
++        gaprnt(0,"Error from RE: ma fraction must be between 0 and 1, or 0 and 100 percent\n");
++        return(1);
+       }
++      if (val<=1.0) val *= 100.0;
++      *minpct = val;
++      i++;
+     }
+-    else minpct=50.0;
++    else if (!strcmp(tok,"amean")) {
++      *opt = 2; *bessel = 0; *method_set = 1;
++    }
++    else if (!strcmp(tok,"vt")) {
++      gaprnt(0,"Error from RE: vt/vote interpolation is not supported by CAMO limited re()\n");
++      return(1);
++    }
++    else if (!strcmp(tok,"ig") || !strcmp(tok,"gaus") || !strcmp(tok,"gauss") || !strcmp(tok,"gaussian")) {
++      gaprnt(0,"Error from RE: gaussian grid options are not supported by CAMO limited re()\n");
++      return(1);
++    }
++    else {
++      snprintf(pout,1255,"Error from RE: unsupported option %s\n",pfc->argpnt[i]);
++      gaprnt(0,pout);
++      return(1);
++    }
+   }
+-  else {
+-    opt=0;         /* bilin without bessel is the default */
+-    bessel=0;
+-  }
++  return(0);
++}
++
++static gadouble *gare_make_linear_axis (gadouble start, gadouble incr, char *tag) {
++gadouble *vals;
++
++  vals = (gadouble *)galloc(sizeof(gadouble)*6,tag);
++  if (vals==NULL) return(NULL);
++  *(vals)   = incr;
++  *(vals+1) = start - incr;
++  *(vals+2) = -999.9;
++  *(vals+3) = 1.0/incr;
++  *(vals+4) = -1.0 * ((start-incr)/incr);
++  *(vals+5) = -999.9;
++  return(vals);
++}
+ 
++static struct gagrid *gare_make_re_dest (struct gagrid *src,
++                                         gaint nx, gadouble xstart, gadouble dx,
++                                         gaint ny, gadouble ystart, gadouble dy) {
++struct gagrid *dst;
++size_t sz;
++size_t n;
++gaint i;
+ 
+-   /* Evaluate the 2nd expression, the destination grid */
+-  pst2=*pst;
+-  rc = gaexpr(pfc->argpnt[1],pst);
+-  if (rc) { 
+-    gaprnt (0,"Error from LTERP: Failed to evaluate 2nd expression \n"); 
+-    error=1; goto err; 
++  if (nx<1 || ny<1 || dx==0.0 || dy==0.0) return(NULL);
++  dst = (struct gagrid *)galloc(sizeof(struct gagrid),"redst");
++  if (dst==NULL) return(NULL);
++  memset(dst,0,sizeof(struct gagrid));
++  dst->pfile = src->pfile;
++  dst->undef = src->undef;
++  dst->pvar = NULL;
++  dst->idim = 0;
++  dst->jdim = 1;
++  dst->iwrld = 0;
++  dst->jwrld = 0;
++  dst->alocf = 1;
++  dst->isiz = nx;
++  dst->jsiz = ny;
++  for (i=0; i<5; i++) {
++    dst->dimmin[i] = src->dimmin[i];
++    dst->dimmax[i] = src->dimmax[i];
+   }
+-  if (pst->type!=1) {
+-    gaprnt (0,"Error from LTERP: The 2nd argument is not a grid expression \n"); 
+-    error=1; goto err;
++  dst->dimmin[0] = 1;
++  dst->dimmax[0] = nx;
++  dst->dimmin[1] = 1;
++  dst->dimmax[1] = ny;
++  dst->igrab = liconv;
++  dst->iabgr = liconv;
++  dst->jgrab = liconv;
++  dst->jabgr = liconv;
++  dst->ivals = gare_make_linear_axis(xstart,dx,"reivals");
++  dst->iavals = dst->ivals ? dst->ivals+3 : NULL;
++  dst->jvals = gare_make_linear_axis(ystart,dy,"rejvals");
++  dst->javals = dst->jvals ? dst->jvals+3 : NULL;
++  if (dst->ivals==NULL || dst->jvals==NULL) { gagfre(dst); return(NULL); }
++  dst->ilinr = 1;
++  dst->jlinr = 1;
++  sz = (size_t)nx * (size_t)ny;
++  dst->grid = (gadouble *)galloc(sizeof(gadouble)*sz,"regrid");
++  dst->umask = (char *)galloc(sizeof(char)*sz,"reumask");
++  if (dst->grid==NULL || dst->umask==NULL) { gagfre(dst); return(NULL); }
++  for (n=0; n<sz; n++) {
++    *(dst->grid+n) = 0.0;
++    *(dst->umask+n) = 1;
+   }
++  return(dst);
++}
+ 
+-  /* Check environment */
+-  if (pst->idim==-1) {
+-    gaprnt (0,"Error from LTERP: The destination grid is a constant \n"); 
+-    error=1; goto err;
++static gaint gare_parse_int_arg (char *arg, gaint *ival) {
++gaint v;
++char *pos;
++
++  pos = intprs(arg,&v);
++  if (pos==NULL || v<1) return(1);
++  *ival = v;
++  return(0);
++}
++
++static gaint gare_shorthand_axis (gadouble lo, gadouble hi, gadouble inc,
++                                  gaint islon, gaint *n, gadouble *start) {
++gadouble span, ratio;
++
++  if (inc<=0.0) return(1);
++  if (hi<lo && islon) hi += 360.0;
++  span = hi - lo;
++  if (span<=0.0) return(1);
++  ratio = span / inc;
++  if (islon && fabs(span-360.0)<0.01) {
++    *n = (gaint)(ratio + 0.5);
++    *start = lo;
+   }
+-  if (pst->idim==2 || pst->idim==4 || pst->jdim==2 || pst->jdim==4) {
+-    gaprnt (0,"Error from LTERP: The grids cannot vary in Z or E \n"); 
+-    error=1; goto err;
++  else {
++    *n = (gaint)floor(ratio + 1.0e-8);
++    *start = lo + 0.5*inc;
+   }
+-  if (opt==1 || opt==2) {
+-    if (pst->idim!=0 || pst->jdim!=1) {
+-    gaprnt (0,"Error from LTERP: The grids must vary in X and Y when using aave or amean\n");
+-    error=1; goto err;
+-    }
+-  }
+- 
+-  /* Evaluate the 1st expression, the data values to be interpolated */
+-  rc = gaexpr(pfc->argpnt[0],&pst2);
+-  if (rc) { 
+-    gaprnt (0,"Error from LTERP: Failed to evaluate 1st expression \n");
+-    error=1; goto err; 
+-  }
+-  if (pst2.type!=1) {
+-    gaprnt (0,"Error from LTERP: The 1st argument is not a grid expression \n");
+-    error=1; goto err;
+-  }
++  if (*n<1) return(1);
++  return(0);
++}
+ 
+-  /* Verify that the varying dimensions are equivalent */
+-  if (pst->idim!=pst2.idim || pst->jdim!=pst2.jdim) {
+-    gaprnt (0,"Error from LTERP: Grids have different varying dimensions \n");
+-    error=1; goto err;
+-  }
++static gaint galterp_core (struct gagrid *pgr1, struct gagrid *pgr2,
++                           gaint opt, gaint bessel, gadouble minpct) {
++struct gafile *pfi1,*pfi2;
++gadouble (*i1conv) (gadouble *, gadouble);
++gadouble (*i2conv) (gadouble *, gadouble);
++gadouble *x1=NULL,*x2=NULL,*y1=NULL,*y2=NULL;
++gadouble *x1b=NULL,*x2b=NULL,*y1b=NULL,*y2b=NULL;
++gadouble *gr1,*gr2,*gxout=NULL,*gyout=NULL,*area1=NULL,*area2=NULL;
++gadouble rad,w1,w2=0,alo,ahi,pct,tscl;
++gaint i,ii,j,jj,i2,ij,ij1,ij2,j2,error=0;
++gaint pxgbflg,pygbflg; 
++gaint ib,ie,jb,je,maxgrid,icnt,indx,flag;
++gadouble *area_box=NULL,*fld_box=NULL,tot_fld,tot_area;
++char *gr1u,*gr2u;
++gaint ic,jc,k,jcm1,jcp1,jcp2;
++gadouble r,s,r1,r2,r3,s1,s2,s3,fijm1,fij,fijp1,fijp2,u,fr[4],del,del2,del3;
++char uijm1,uij,uijp1,uijp2;
++struct dt t1g1;
++gadouble tval;
+ 
+-  /* Get the grids */
+-  pgr1 = pst2.result.pgr;     /* data source grid (input)  */
+-  pgr2 = pst->result.pgr;     /* destination grid (result) */
++  rad = M_PI/180.0;
+   gr1  = pgr1->grid;
+   gr1u = pgr1->umask;
+   gr2  = pgr2->grid;
+@@ -1048,14 +1151,16 @@
+ 
+   /* If the time dimension varies, the time increment must be equivalent 
+      (we won't interpolate from months to minutes) */
+-  if (pst->idim==3) {
++  if (pgr2->idim==3) {
++    if (pfi1==NULL || pfi2==NULL) { error=1; goto err; }
+     if ((*(pgr1->ivals+6)<0.5 && *(pgr2->ivals+6)>0.8) || 
+ 	(*(pgr1->ivals+6)>0.8 && *(pgr2->ivals+6)<0.5)) {
+       gaprnt (0,"Error from LTERP: Grids do not have matching time increments \n");
+       error=1; goto err;
+     }
+   }
+-  if (pst->jdim==3) {
++  if (pgr2->jdim==3) {
++    if (pfi1==NULL || pfi2==NULL) { error=1; goto err; }
+     if ((*(pgr1->jvals+6)<0.5 && *(pgr2->jvals+6)>0.8) || 
+ 	(*(pgr1->jvals+6)>0.8 && *(pgr2->jvals+6)<0.5)) {
+       gaprnt (0,"Error from LTERP: Grids do not have matching time increments \n");
+@@ -1197,14 +1302,14 @@
+ 
+   /* Normalize the time coordinates.  We want the grid time values to
+      be the same coordinate system for each grid.  */
+-  if (pst->idim==3 || pst->jdim==3) {
++  if (pgr2->idim==3 || pgr2->jdim==3) {
+ 
+     /* get world coordinate value of initial t for grid 2 (destination grid) */
+     gr2t (pfi2->grvals[3],pgr2->dimmin[3],&t1g1);
+     /* find the t value for this time in the axis of grid 1 (src grid) */
+     tval = t2gr(pfi1->abvals[3], &t1g1);
+ 
+-    if (pst->idim==3) {
++    if (pgr2->idim==3) {
+       /* the i dimension is T-varying */
+       /* determine scaling factor */
+       if (pgr1->ivals[6]>0.8) 
+@@ -1736,11 +1841,10 @@
+ /*       } */
+ /*     } */
+ 
++
+ err:
+ 
+   /* release memory */
+-  gafree (&pst2);
+-  if (error) if (pst!=NULL) gafree (pst); 
+   if (x1!=NULL) gree(x1,"f400");
+   if (x2!=NULL) gree(x2,"f401");
+   if (y1!=NULL) gree(y1,"f402");
+@@ -1755,10 +1859,219 @@
+   if (area2!=NULL) gree(area2,"f403b");
+   if (fld_box!=NULL) gree(fld_box,"399a");
+   if (area_box!=NULL) gree(area_box,"399b");
+-  if (error) 
++  if (error) return(1);
++  return(0);
++}
++
++gaint fflterp (struct gafunc *pfc, struct gastat *pst) {
++struct gastat pst2;
++struct gagrid *pgr1,*pgr2;
++gaint rc,opt=0,bessel=0,error=0;
++gadouble minpct=50.0;
++
++  if (pfc->argnum<2 || pfc->argnum>4) {
++    gaprnt (0,"Error from LTERP:  Too many or too few args \n");
++    gaprnt (0,"                    2 to 4 arguments expected \n");
++    return (1);
++  }
++
++  if (pfc->argnum>=3) {
++    if (strcmp("bilin",pfc->argpnt[2])==0)  {opt = 0; bessel=0;}
++    else if (strcmp("bessel",pfc->argpnt[2])==0) {opt = 0; bessel=1;}
++    else if (strcmp("aave" ,pfc->argpnt[2])==0)   opt = 1;
++    else if (strcmp("amean",pfc->argpnt[2])==0)   opt = 2;
++    else {
++      gaprnt (0,"Error from LTERP:  3rd argument must be bilin, bessel, aave, or amean\n");
++      return(1);
++    }
++    if (pfc->argnum==4) {
++      if (getdbl(pfc->argpnt[3],&minpct)==NULL) {
++	gaprnt (0,"Error from LTERP:  4th argument must be a real number between 0 and 100 \n");
++	return(1);
++      }
++      if (minpct<0 || minpct>100) {
++	gaprnt (0,"Error from LTERP:  4th argument must be between 0 and 100 \n");
++	return(1);
++      }
++    }
++  }
++
++  /* Evaluate the 2nd expression, the destination grid */
++  pst2=*pst;
++  rc = gaexpr(pfc->argpnt[1],pst);
++  if (rc) { 
++    gaprnt (0,"Error from LTERP: Failed to evaluate 2nd expression \n"); 
++    error=1; goto err; 
++  }
++  if (pst->type!=1) {
++    gaprnt (0,"Error from LTERP: The 2nd argument is not a grid expression \n"); 
++    error=1; goto err;
++  }
++  if (pst->idim==-1) {
++    gaprnt (0,"Error from LTERP: The destination grid is a constant \n"); 
++    error=1; goto err;
++  }
++  if (pst->idim==2 || pst->idim==4 || pst->jdim==2 || pst->jdim==4) {
++    gaprnt (0,"Error from LTERP: The grids cannot vary in Z or E \n"); 
++    error=1; goto err;
++  }
++  if (opt==1 || opt==2) {
++    if (pst->idim!=0 || pst->jdim!=1) {
++      gaprnt (0,"Error from LTERP: The grids must vary in X and Y when using aave or amean\n");
++      error=1; goto err;
++    }
++  }
++ 
++  /* Evaluate the 1st expression, the data values to be interpolated */
++  rc = gaexpr(pfc->argpnt[0],&pst2);
++  if (rc) { 
++    gaprnt (0,"Error from LTERP: Failed to evaluate 1st expression \n");
++    error=1; goto err; 
++  }
++  if (pst2.type!=1) {
++    gaprnt (0,"Error from LTERP: The 1st argument is not a grid expression \n");
++    error=1; goto err;
++  }
++  if (pst->idim!=pst2.idim || pst->jdim!=pst2.jdim) {
++    gaprnt (0,"Error from LTERP: Grids have different varying dimensions \n");
++    error=1; goto err;
++  }
++
++  pgr1 = pst2.result.pgr;
++  pgr2 = pst->result.pgr;
++  rc = galterp_core(pgr1,pgr2,opt,bessel,minpct);
++  if (rc) error=1;
++
++err:
++  gafree (&pst2);
++  if (error) {
++    if (pst!=NULL) gafree (pst); 
+     return 1;
+-  else 
+-    return 0;
++  }
++  return 0;
++}
++
++gaint ffre (struct gafunc *pfc, struct gastat *pst) {
++struct gagrid *src=NULL,*dst=NULL;
++gadouble dlon,dlat,xstart=0.0,ystart=0.0,dx,dy,srcdx,srcdy;
++gadouble lon1,lon2,lat1,lat2;
++gaint nx=0,ny=0,opt=0,bessel=0,method_set=0,method_start=0,rc;
++char tok[32];
++gadouble minpct=50.0;
++
++  if (pfc->argnum<2) {
++    gaprnt(0,"Error from RE: too few arguments\n");
++    gaprnt(0,"  Usage: re(expr,dlon[,dlat][,bl|bs|ba|ma,fraction])\n");
++    return(1);
++  }
++
++  rc = gaexpr(pfc->argpnt[0],pst);
++  if (rc) return(rc);
++  if (pst->type!=1 || pst->result.pgr==NULL) {
++    gaprnt(0,"Error from RE: first argument must be a grid expression\n");
++    gafree(pst);
++    return(1);
++  }
++  src = pst->result.pgr;
++  if (src->idim!=0 || src->jdim!=1) {
++    gaprnt(0,"Error from RE: CAMO limited re() requires a 2-D lon/lat grid\n");
++    gafree(pst);
++    return(1);
++  }
++
++  if (pfc->argnum>=9) {
++    gare_clean_token(pfc->argpnt[2],tok,sizeof(tok));
++    if (strcmp(tok,"linear")) {
++      gaprnt(0,"Error from RE: CAMO limited re() supports only linear X output mapping\n");
++      gafree(pst);
++      return(1);
++    }
++    gare_clean_token(pfc->argpnt[6],tok,sizeof(tok));
++    if (strcmp(tok,"linear")) {
++      gaprnt(0,"Error from RE: CAMO limited re() supports only linear Y output mapping\n");
++      gafree(pst);
++      return(1);
++    }
++    if (gare_parse_int_arg(pfc->argpnt[1],&nx) || getdbl(pfc->argpnt[3],&xstart)==NULL ||
++        getdbl(pfc->argpnt[4],&dlon)==NULL || gare_parse_int_arg(pfc->argpnt[5],&ny) ||
++        getdbl(pfc->argpnt[7],&ystart)==NULL || getdbl(pfc->argpnt[8],&dlat)==NULL) {
++      gaprnt(0,"Error from RE: invalid full-grid arguments\n");
++      gafree(pst);
++      return(1);
++    }
++    method_start = 9;
++  }
++  else {
++    if (getdbl(pfc->argpnt[1],&dlon)==NULL) {
++      gaprnt(0,"Error from RE: dlon must be numeric\n");
++      gafree(pst);
++      return(1);
++    }
++    if (pfc->argnum>=3 && !gare_is_method_token(pfc->argpnt[2])) {
++      if (getdbl(pfc->argpnt[2],&dlat)==NULL) {
++        gaprnt(0,"Error from RE: dlat must be numeric\n");
++        gafree(pst);
++        return(1);
++      }
++      method_start = 3;
++    }
++    else {
++      dlat = dlon;
++      method_start = 2;
++    }
++    lon1 = pst->dmin[0]; lon2 = pst->dmax[0];
++    lat1 = pst->dmin[1]; lat2 = pst->dmax[1];
++    if (gare_shorthand_axis(lon1,lon2,dlon,1,&nx,&xstart) ||
++        gare_shorthand_axis(lat1,lat2,dlat,0,&ny,&ystart)) {
++      gaprnt(0,"Error from RE: unable to derive output grid from current lon/lat environment\n");
++      gafree(pst);
++      return(1);
++    }
++  }
++
++  if (dlon<=0.0 || dlat<=0.0 || nx<1 || ny<1) {
++    gaprnt(0,"Error from RE: invalid output grid size or increment\n");
++    gafree(pst);
++    return(1);
++  }
++
++  if (gare_parse_re_methods(pfc,method_start,&opt,&bessel,&minpct,&method_set)) {
++    gafree(pst);
++    return(1);
++  }
++  if (!method_set) {
++    if (src->isiz<2 || src->jsiz<2) {
++      gaprnt(0,"Error from RE: input grid must have at least two points in lon and lat for default method selection\n");
++      gafree(pst);
++      return(1);
++    }
++    srcdx = fabs(src->igrab(src->ivals,(gadouble)(src->dimmin[0]+1)) -
++                 src->igrab(src->ivals,(gadouble)src->dimmin[0]));
++    srcdy = fabs(src->jgrab(src->jvals,(gadouble)(src->dimmin[1]+1)) -
++                 src->jgrab(src->jvals,(gadouble)src->dimmin[1]));
++    if (dlon>=srcdx || dlat>=srcdy) { opt=1; bessel=0; }
++    else { opt=0; bessel=1; }
++  }
++
++  dx = dlon;
++  dy = dlat;
++  dst = gare_make_re_dest(src,nx,xstart,dx,ny,ystart,dy);
++  if (dst==NULL) {
++    gaprnt(0,"Error from RE: unable to allocate destination grid\n");
++    gafree(pst);
++    return(1);
++  }
++
++  rc = galterp_core(src,dst,opt,bessel,minpct);
++  if (rc) {
++    gagfre(dst);
++    gafree(pst);
++    return(1);
++  }
++  gagfre(src);
++  pst->result.pgr = dst;
++  pst->type = 1;
++  return(0);
+ }
+ 
+ /* Perform a two-operand operation which may have both grid or

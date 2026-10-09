@@ -1,0 +1,319 @@
+--- a/src/gauser.c
++++ b/src/gauser.c
+@@ -543,7 +543,7 @@
+     goto retrn;
+   }
+   else if (cmpwrd("draw",cmd)) {
+-    gadraw (com,pcm);
++    retcod = gadraw (com,pcm);
+     gxsignal (1);        /* tell rendering layer and metabuffer draw is done */
+     gxfrme (9);          /* flush X request buffer */
+     goto retrn;
+@@ -1356,6 +1356,8 @@
+   return 0;
+ }
+ 
++#include "camo_geo_annotations.inc"
++
+ gaint gadraw (char *cmd, struct gacmn *pcm) {
+ struct gbtn btn;
+ struct gdmu dmu;
+@@ -1364,7 +1366,7 @@
+ gadouble lon,lat,lon2,lat2,delta,bearing,latr,lonr,newlat,newlon,prevlon;
+ gadouble geou,geov,mag,dir,asiz;
+ gadouble geoxy[146];
+-gaint i,cnt,newcnt,cflg,ipos,len,mk,wx,thk,col,fill,kmflg;
++gaint i,cnt,newcnt,cflg,ipos,len,mk,wx,thk,col,fill,kmflg,geo,visible;
+ char oper[12],chars[250];
+ char *c1,*c2,*ccmd;
+ size_t sz;
+@@ -1481,41 +1483,70 @@
+     return (1);
+   }
+ 
+-  if (cmpwrd("wxsym",oper)) {
+-    if ((cmd = nxtwrd (cmd)) == NULL) goto errwx;
+-    if (intprs(cmd,&wx) == NULL ) goto errwx;
+-    if ((cmd = nxtwrd (cmd)) == NULL) goto errwx;
+-    if (getdbl(cmd,&x) == NULL ) goto errwx;
++  if (cmpwrd("geoline",oper)) {
++    if ((cmd=nxtwrd(cmd))==NULL || camo_geo_number(cmd,&lon)==NULL) goto errgeoline;
++    if ((cmd=nxtwrd(cmd))==NULL || camo_geo_number(cmd,&lat)==NULL) goto errgeoline;
++    if ((cmd=nxtwrd(cmd))==NULL || camo_geo_number(cmd,&lon2)==NULL) goto errgeoline;
++    if ((cmd=nxtwrd(cmd))==NULL || camo_geo_number(cmd,&lat2)==NULL) goto errgeoline;
++    if (nxtwrd(cmd)!=NULL || camo_geo_line(pcm,lon,lat,lon2,lat2)) goto errgeoline;
++    return 0;
++    errgeoline:
++    gaprnt(0,"DRAW error: Syntax is DRAW GEOLINE lon1 lat1 lon2 lat2 (finite; latitude -90..90)\n");
++    return 1;
++  }
++  if (cmpwrd("wxsym",oper) || cmpwrd("geowxsym",oper)) {
++    geo=cmpwrd("geowxsym",oper);
+     if ((cmd = nxtwrd (cmd)) == NULL) goto errwx;
+-    if (getdbl(cmd,&y) == NULL ) goto errwx;
++    if ((geo ? camo_geo_integer(cmd,&wx) : intprs(cmd,&wx)) == NULL) goto errwx;
++    if ((cmd = nxtwrd (cmd)) == NULL) goto errwx;
++    if ((geo ? camo_geo_number(cmd,&x) : getdbl(cmd,&x)) == NULL) goto errwx;
++    if ((cmd = nxtwrd (cmd)) == NULL) goto errwx;
++    if ((geo ? camo_geo_number(cmd,&y) : getdbl(cmd,&y)) == NULL) goto errwx;
+     if ((cmd = nxtwrd (cmd)) == NULL) goto errwx;
+-    if (getdbl(cmd,&cs) == NULL ) goto errwx;
++    if ((geo ? camo_geo_number(cmd,&cs) : getdbl(cmd,&cs)) == NULL) goto errwx;
+     thk = 3;
+     col = -1;
+     if ((cmd = nxtwrd (cmd)) != NULL) {
+-      if (intprs(cmd,&col) == NULL ) goto errwx;
++      if ((geo ? camo_geo_integer(cmd,&col) : intprs(cmd,&col)) == NULL) goto errwx;
+       if ((cmd = nxtwrd (cmd)) != NULL) {
+-        if (intprs(cmd,&thk) == NULL ) goto errwx;
++        if ((geo ? camo_geo_integer(cmd,&thk) : intprs(cmd,&thk)) == NULL) goto errwx;
+       }
+     }
+     if (wx<1 || wx>43) goto errwx;
++    if (geo) {
++      if (!isfinite(cs) || cs<=0 || col < -1 || col>2047 || thk<1 || thk>12 ||
++          (cmd!=NULL && nxtwrd(cmd)!=NULL)) goto errwx;
++      visible=camo_geo_anchor(pcm,&x,&y);
++      if (visible<0) goto errwx;
++      if (!visible) return 0;
++      gxclip(pcm->xsiz1,pcm->xsiz2,pcm->ysiz1,pcm->ysiz2);
++    }
+     gxwide (thk);
+     gxstyl(1);
+     wxsym (wx,x,y,cs,col,pcm->wxcols);
++    if (geo) gxclip(0.0,pcm->xsiz,0.0,pcm->ysiz);
+     return (0);
+ 
+     errwx:
++    if (geo) { gaprnt(0,"DRAW error: Syntax is DRAW GEOWXSYM symbol lon lat size [color [thickness]]\n"); return 1; }
+     gaprnt (0,"DRAW error: Syntax is DRAW WXSYM sym x y siz <color <thickness>>");
+     gaprnt (0,"<color <thick> >\n");
+     return (1);
+   }
+-  if (cmpwrd("string",oper)) {
++  if (cmpwrd("string",oper) || cmpwrd("geostring",oper)) {
++    geo=cmpwrd("geostring",oper);
+     if ((cmd = nxtwrd (cmd)) == NULL) goto errst;
+-    if (getdbl(cmd,&x) == NULL ) goto errst;
++    if ((geo ? camo_geo_number(cmd,&x) : getdbl(cmd,&x)) == NULL) goto errst;
+     if ((cmd = nxtwrd (cmd)) == NULL) goto errst;
+-    if (getdbl(cmd,&y) == NULL ) goto errst;
++    if ((geo ? camo_geo_number(cmd,&y) : getdbl(cmd,&y)) == NULL) goto errst;
+     if ((cmd = nxtwrd (cmd)) == NULL) goto errst;
+     c1 = cmd;
++    if (geo) {
++      visible=camo_geo_anchor(pcm,&x,&y);
++      if (visible<0) goto errst;
++      if (!visible) return 0;
++      gxclip(pcm->xsiz1,pcm->xsiz2,pcm->ysiz1,pcm->ysiz2);
++    }
+     len=0;
+     while (*c1!='\0' && *c1!='\n') {len++; c1++;}
+     gxwide (pcm->strthk);
+@@ -1532,9 +1563,11 @@
+     y = y - justy[pcm->strjst] * shite * sin(ang+1.5708);
+ 
+     gxchpl (cmd,len,x,y,pcm->strvsz,pcm->strhsz,pcm->strrot);
++    if (geo) gxclip(0.0,pcm->xsiz,0.0,pcm->ysiz);
+     return (0);
+ 
+     errst:
++    if (geo) { gaprnt(0,"DRAW error: Syntax is DRAW GEOSTRING lon lat string\n"); return 1; }
+     gaprnt (0,"DRAW error: Syntax is DRAW STRING x y string\n");
+     return (1);
+   }
+@@ -2063,22 +2096,32 @@
+     gaprnt (0,"DRAW LINE error: Missing Y coordinate\n");
+     return (1);
+   }
+-  if (cmpwrd("mark",oper)) {
++  if (cmpwrd("mark",oper) || cmpwrd("geomark",oper)) {
++    geo=cmpwrd("geomark",oper);
+     if ((cmd = nxtwrd (cmd)) == NULL) goto errmk;
+-    if (intprs(cmd,&mk) == NULL ) goto errmk;
++    if ((geo ? camo_geo_integer(cmd,&mk) : intprs(cmd,&mk)) == NULL) goto errmk;
+     if ((cmd = nxtwrd (cmd)) == NULL) goto errmk;
+-    if (getdbl(cmd,&x) == NULL ) goto errmk;
++    if ((geo ? camo_geo_number(cmd,&x) : getdbl(cmd,&x)) == NULL) goto errmk;
+     if ((cmd = nxtwrd (cmd)) == NULL) goto errmk;
+-    if (getdbl(cmd,&y) == NULL ) goto errmk;
++    if ((geo ? camo_geo_number(cmd,&y) : getdbl(cmd,&y)) == NULL) goto errmk;
+     if ((cmd = nxtwrd (cmd)) == NULL) goto errmk;
+-    if (getdbl(cmd,&cs) == NULL ) goto errmk;
++    if ((geo ? camo_geo_number(cmd,&cs) : getdbl(cmd,&cs)) == NULL) goto errmk;
++    if (geo) {
++      if (mk<0 || mk>12 || !isfinite(cs) || cs<=0 || nxtwrd(cmd)!=NULL) goto errmk;
++      visible=camo_geo_anchor(pcm,&x,&y);
++      if (visible<0) goto errmk;
++      if (!visible) return 0;
++      gxclip(pcm->xsiz1,pcm->xsiz2,pcm->ysiz1,pcm->ysiz2);
++    }
+     gxwide (pcm->linthk);
+     gxcolr (pcm->lincol);
+     gxstyl (1);
+     gxmark (mk,x,y,cs);
++    if (geo) gxclip(0.0,pcm->xsiz,0.0,pcm->ysiz);
+     return (0);
+ 
+     errmk:
++    if (geo) { gaprnt(0,"DRAW error: Syntax is DRAW GEOMARK type(0..12) lon lat size\n"); return 1; }
+     gaprnt (0,"DRAW error: Syntax is DRAW MARK marktype x y size\n");
+     return (1);
+   }
+@@ -5005,6 +5048,10 @@
+     printf (" set fontfamily NAME\n");
+     printf (" set panels ROW COL [gap]; set panel N; set panels off\n");
+     printf (" draw geovec LON LAT U V\n");
++    printf (" draw geoline LON1 LAT1 LON2 LAT2\n");
++    printf (" draw geostring LON LAT STRING\n");
++    printf (" draw geomark TYPE LON LAT SIZE (0..12)\n");
++    printf (" draw geowxsym SYMBOL LON LAT SIZE [COLOR [THICKNESS]]\n");
+     printf (" draw geocirc[f] LON LAT [RADIUS [km]]\n");
+     printf (" draw georec[f] LON1 LAT1 LON2 LAT2\n");
+     printf (" export FILE [transparent] [scale N]\n");
+@@ -5057,6 +5104,7 @@
+   if (arg && cmpwrdl("text",arg)) {
+     printf ("\nText and font hints:\n");
+     printf (" set fontfamily NAME      select a system font family\n");
++    printf (" Set family before drawing; use one family per page through gxprint/redraw.\n");
+     printf (" set strsiz X [Y]         text size\n");
+     printf (" set string COLOR JUST THICK ROTATION\n");
+     printf (" draw string X Y TEXT     draw text\n");
+@@ -5070,6 +5118,12 @@
+     printf ("\nGeographic drawing:\n");
+     printf (" draw geovec LON LAT U V\n");
+     printf (" draw geocirc LON LAT [RADIUS [km]]\n");
++    printf (" draw geoline LON1 LAT1 LON2 LAT2\n");
++    printf ("   Shortest longitude span; lon/lat linear interpolation, projected and clipped.\n");
++    printf (" draw geostring LON LAT STRING\n");
++    printf (" draw geomark TYPE LON LAT SIZE (0..12; 12 is a filled diamond)\n");
++    printf (" draw geowxsym SYMBOL LON LAT SIZE [COLOR [THICKNESS]] (1..43)\n");
++    printf (" Text uses set string/strsiz/font; marker size is in page units.\n");
+     printf (" draw geocircf LON LAT [RADIUS [km]]\n");
+     printf (" draw georec LON1 LAT1 LON2 LAT2\n");
+     printf (" draw georecf LON1 LAT1 LON2 LAT2\n");
+--- /dev/null
++++ b/src/camo_geo_annotations.inc
+@@ -0,0 +1,122 @@
++/* CAMO geographic annotations. Kept separate for geometry regression tests.
++   Angles are degrees; sizes remain page units. No font state is introduced. */
++#include <stdlib.h>
++
++/* Geographic commands require whole numeric tokens. Legacy draw commands keep
++   their existing parsers; accepting 3junk or truncating marker 3.5 is unsafe. */
++static char *camo_geo_number(char *text, gadouble *value) {
++  char *end;
++  *value=strtod(text,&end);
++  if (end==text || !isfinite(*value) ||
++      (*end!='\0' && *end!=' ' && *end!='\t' && *end!='\n')) return NULL;
++  return end;
++}
++
++static char *camo_geo_integer(char *text, gaint *value) {
++  char *end;
++  long parsed=strtol(text,&end,10);
++  /* All supported symbol, color and thickness IDs fit this range. Checking
++     before conversion also avoids overflow in the legacy integer parser. */
++  if (end==text || parsed < -2048 || parsed > 2047 ||
++      (*end!='\0' && *end!=' ' && *end!='\t' && *end!='\n')) return NULL;
++  *value=(gaint)parsed;
++  return end;
++}
++
++static void camo_geo_bounds(struct gacmn *pcm, gadouble *b) {
++  if (pcm->mpflg==4 && pcm->mproj>2 && pcm->mproj!=7) {
++    b[0]=pcm->mpvals[0]; b[1]=pcm->mpvals[1];
++    b[2]=pcm->mpvals[2]; b[3]=pcm->mpvals[3];
++  } else {
++    b[0]=pcm->dmin[0]; b[1]=pcm->dmax[0];
++    b[2]=pcm->dmin[1]; b[3]=pcm->dmax[1];
++  }
++}
++
++/* Remainder avoids unbounded loops for very large, but finite, longitudes. */
++static gadouble camo_geo_wrap(gadouble lon, gadouble mid) {
++  return mid + remainder(remainder(lon,360.0)-remainder(mid,360.0),360.0);
++}
++
++/* Return -1 on bad coordinates/environment, 0 outside, 1 for a visible anchor. */
++static gaint camo_geo_anchor(struct gacmn *pcm, gadouble *x, gadouble *y) {
++  gadouble b[4],lon;
++  if (!isfinite(*x) || !isfinite(*y) || fabs(*y)>90.0) return -1;
++  if (!gadraw_geo_ready(pcm)) return -1;
++  camo_geo_bounds(pcm,b);
++  lon=camo_geo_wrap(*x,0.5*(b[0]+b[1]));
++  if (lon<b[0] || lon>b[1] || *y<b[2] || *y>b[3]) return 0;
++  gxconv(lon,*y,x,y,2);
++  if (!isfinite(*x) || !isfinite(*y)) return 0;
++  return *x>=pcm->xsiz1 && *x<=pcm->xsiz2 &&
++         *y>=pcm->ysiz1 && *y<=pcm->ysiz2;
++}
++
++/* Liang-Barsky clipping in longitude/latitude BEFORE projection. In particular,
++   the opposite hemisphere must not fold into an orthographic map. */
++static gaint camo_geo_clip(gadouble *a, gadouble *z, const gadouble *b) {
++  gadouble p[4],q[4],lo=0.0,hi=1.0,t,dx=z[0]-a[0],dy=z[1]-a[1];
++  gaint i;
++  p[0]=-dx; p[1]=dx; p[2]=-dy; p[3]=dy;
++  q[0]=a[0]-b[0]; q[1]=b[1]-a[0]; q[2]=a[1]-b[2]; q[3]=b[3]-a[1];
++  for (i=0;i<4;i++) {
++    if (p[i]==0.0) { if (q[i]<0.0) return 0; }
++    else {
++      t=q[i]/p[i];
++      if (p[i]<0.0) { if (t>hi) return 0; if (t>lo) lo=t; }
++      else { if (t<lo) return 0; if (t<hi) hi=t; }
++    }
++  }
++  z[0]=a[0]+hi*dx; z[1]=a[1]+hi*dy;
++  a[0]+=lo*dx; a[1]+=lo*dy;
++  return 1;
++}
++
++/* Adaptive projected interpolation. Cap recursion; discard unresolved jumps at
++   projection singularities instead of drawing a spurious page-wide chord. */
++static void camo_geo_segment(gadouble lon1,gadouble lat1,gadouble lon2,
++                             gadouble lat2,gaint depth,gaint *pen) {
++  gadouble x1,y1,x2,y2,xm,ym,lonm=(lon1+lon2)*0.5,latm=(lat1+lat2)*0.5;
++  gaint good;
++  gxconv(lon1,lat1,&x1,&y1,2); gxconv(lon2,lat2,&x2,&y2,2);
++  gxconv(lonm,latm,&xm,&ym,2);
++  good=isfinite(x1)&&isfinite(y1)&&isfinite(x2)&&isfinite(y2)&&
++       isfinite(xm)&&isfinite(ym);
++  if (good && hypot(x2-x1,y2-y1)<=0.25 &&
++      hypot(xm-(x1+x2)*0.5,ym-(y1+y2)*0.5)<=0.001 &&
++      fabs(lon2-lon1)<=1.0 && fabs(lat2-lat1)<=1.0) {
++    if (*pen==3) gxplot(x1,y1,3);
++    gxplot(x2,y2,2); *pen=2; return;
++  }
++  if (depth>=16) { *pen=3; return; }
++  camo_geo_segment(lon1,lat1,lonm,latm,depth+1,pen);
++  camo_geo_segment(lonm,latm,lon2,lat2,depth+1,pen);
++}
++
++static gaint camo_geo_line(struct gacmn *pcm, gadouble lon1,gadouble lat1,
++                           gadouble lon2,gadouble lat2) {
++  gadouble b[4],a[2],z[2],delta,offset,start,end;
++  gaint pen;
++  if (!isfinite(lon1)||!isfinite(lon2)||!isfinite(lat1)||!isfinite(lat2)||
++      fabs(lat1)>90.0||fabs(lat2)>90.0) return 1;
++  if (!gadraw_geo_ready(pcm)) return 1;
++  camo_geo_bounds(pcm,b);
++  if (b[1]<=b[0] || b[3]<=b[2] || b[1]-b[0]>360.001) {
++    gaprnt(0,"GEOLINE requires a map longitude span of at most 360 degrees\n");
++    return 1;
++  }
++  delta=remainder(remainder(lon2,360.0)-remainder(lon1,360.0),360.0);
++  lon1=camo_geo_wrap(lon1,0.5*(b[0]+b[1])); lon2=lon1+delta;
++  start=ceil((b[0]-fmax(lon1,lon2))/360.0);
++  end=floor((b[1]-fmin(lon1,lon2))/360.0);
++  gxclip(pcm->xsiz1,pcm->xsiz2,pcm->ysiz1,pcm->ysiz2);
++  gxcolr(pcm->lincol); gxwide(pcm->linthk); gxstyl(pcm->linstl);
++  for (offset=start;offset<=end;offset+=1.0) {
++    a[0]=lon1+offset*360.0; a[1]=lat1;
++    z[0]=lon2+offset*360.0; z[1]=lat2;
++    pen=3;
++    if (camo_geo_clip(a,z,b)) camo_geo_segment(a[0],a[1],z[0],z[1],0,&pen);
++  }
++  gxclip(0.0,pcm->xsiz,0.0,pcm->ysiz);
++  return 0;
++}

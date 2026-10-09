@@ -1,0 +1,12 @@
+Description: remove obsolete outxwd and printim command aliases
+Author: CAMO packaging maintainers
+Forwarded: no
+
+--- a/src/gauser.c
++++ b/src/gauser.c
+@@ -483,5 +483,0 @@ FILE *pdefid=NULL;
+-  else if (cmpwrd("outxwd", cmd)) { 
+-    gaprnt(0,"The outxwd command has been retired. Use \"gxprint\" instead.\n");
+-    retcod = 1;
+-    goto retrn;
+-  }
