@@ -1,0 +1,36 @@
+Description: On Debian, library is called udunits2 not udunits.
+Author: Alastair McKinstry <mckinstry@debian.org>
+Last-Updated: 2012-09-16
+Forwarded: not-needed
+
+Index: grads-2.2.1/configure.ac
+===================================================================
+--- grads-2.2.1.orig/configure.ac
++++ grads-2.2.1/configure.ac
+@@ -649,7 +649,7 @@ if test "Z$ga_supplib_dir" != "Z" ; then
+   echo looking in $ga_supplib_dir 
+   GA_SET_FLAGS([])
+   AC_CHECK_HEADER([udunits.h], 
+-  [ AC_CHECK_LIB([udunits], [utInit], 
++  [ AC_CHECK_LIB([udunits2], [utInit], 
+     [ have_udunits=yes 
+     ])
+   ])
+@@ -723,7 +723,7 @@ if test "$have_udunits" = "yes" ; then
+ 	if test ! -f "$NC_CONFIG" || test ! -x "$NC_CONFIG"; then
+           use_nc4="no"
+ #          GA_SET_LIB_VAR(nc_libs, [udunits netcdf])
+-          GA_SET_DYNLIB_VAR(nc_libs, [udunits netcdf])
++          GA_SET_DYNLIB_VAR(nc_libs, [udunits2 netcdf])
+         else
+           # check if netcdf lib has hdf5 and if dap-enabled
+           nchdf5=`$NC_CONFIG --has-hdf5`
+@@ -731,7 +731,7 @@ if test "$have_udunits" = "yes" ; then
+           if test "$nchdf5" = "yes" -a "$have_curl" = "yes" ; then
+             use_nc4="yes"
+ #            GA_SET_LIB_VAR(nc_libs, [udunits netcdf hdf5_hl hdf5 curl z])
+-            GA_SET_DYNLIB_VAR(nc_libs, [udunits netcdf hdf5_hl hdf5 curl z])
++            GA_SET_DYNLIB_VAR(nc_libs, [udunits2 netcdf hdf5_hl hdf5 curl z])
+           fi
+         fi
+       ])

@@ -1,0 +1,30 @@
+Description: Use FHS paths for data directory.
+Author: Alastair McKinstry <mckinstry@debian.org>
+Last-Updated: 2010-05-09
+Forwarded: no
+
+Index: grads-2.2.1/src/gxsubs.c
+===================================================================
+--- grads-2.2.1.orig/src/gxsubs.c
++++ grads-2.2.1/src/gxsubs.c
+@@ -32,7 +32,7 @@ void gree ();
+ /* The following variables are local to this file, and are used by
+    all the routines in the file.    */
+ 
+-static char *datad = "/usr/local/lib/grads";
++static char *datad = "/usr/share/grads";
+ static gadouble xsize, ysize;                /* Virtual page size  */
+ static gadouble rxsize, rysize;              /* Real page size     */
+ static gaint lwflg;                          /* Reduce lw due vpage*/
+Index: grads-2.2.1/src/Makefile.in
+===================================================================
+--- grads-2.2.1.orig/src/Makefile.in
++++ grads-2.2.1/src/Makefile.in
+@@ -543,6 +543,7 @@ hdr_ga = gagmap.h gagui.h gabufr.h gasdf
+ hdr_gx = gx.h gxGD.h gxC.h gxmap.h 
+ noinst_HEADERS = $(hdr_core) $(hdr_ga) $(hdr_gx) 
+ DISTCLEANFILES = buildinfo.h config.h
++SUPPLIBS=/usr
+ supp_include_dir = $(SUPPLIBS)/include
+ supp_lib_dir = $(SUPPLIBS)/lib
+ LDADD = -L$(supp_lib_dir) $(geotiff_ldflags) $(gd_ldflags)
