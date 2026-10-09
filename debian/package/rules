@@ -1,0 +1,48 @@
+#!/usr/bin/make -f
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export DEB_CFLAGS_MAINT_APPEND = -fPIC -Wno-trigraphs -DH5_USE_110_API
+export DEB_CPPFLAGS_MAINT_APPEND = -I/usr/include/hdf5/serial -I/usr/include/udunits2 -DH5_USE_110_API
+export SUPPLIBS = /usr
+
+DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
+PACKAGE_DIR := $(CURDIR)/debian/grads-camo
+MULTIARCH_LIBDIR := /usr/lib/$(DEB_HOST_MULTIARCH)
+GRADS_LIBDIR := $(MULTIARCH_LIBDIR)/grads
+HDF5_SERIAL_LIBDIR := /usr/lib/$(DEB_HOST_MULTIARCH)/hdf5/serial
+export DEB_LDFLAGS_MAINT_APPEND = -L$(HDF5_SERIAL_LIBDIR)
+
+%:
+	dh $@ --with autoreconf
+
+execute_before_dh_autoreconf:
+	cp -p debian/vendor/cairo.m4 m4/cairo.m4
+	cp -p debian/vendor/libshp.m4 m4/libshp.m4
+	sed -i \
+	  -e 's/AC_CHECK_LIB(\[grib2c\]/AC_CHECK_LIB([g2c]/g' \
+	  -e 's/AC_CHECK_LIB(grib2c/AC_CHECK_LIB(g2c/g' \
+	  -e 's/\[grib2c jasper png z\]/[g2c png z]/g' \
+	  -e 's/-lgrib2c/-lg2c/g' \
+	  -e 's/-ljasper //g' \
+	  -e 's/png15/png/g' configure.ac m4/grib2.m4
+override_dh_auto_configure:
+	dh_auto_configure -- \
+	  --enable-dyn-supplibs \
+	  --without-gadap \
+	  --with-x \
+	  --with-hdf4-include=/usr/include/hdf \
+	  --with-hdf4-libdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
+	  --with-hdf5-include=/usr/include/hdf5/serial \
+	  --with-hdf5-libdir=$(HDF5_SERIAL_LIBDIR) \
+	  --with-netcdf-include=/usr/include \
+	  --with-netcdf-libdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
+	  --libdir=$(GRADS_LIBDIR)
+	printf '\n#define CAMO_VERSION "camo26.1"\n' >> src/config.h
+
+override_dh_auto_install:
+	dh_auto_install --destdir=$(PACKAGE_DIR)
+	find $(PACKAGE_DIR) -name '*.la' -delete
+	install -d -m 0755 $(PACKAGE_DIR)/usr/share/grads
+	cp -a data/. $(PACKAGE_DIR)/usr/share/grads/
+	sed 's|@LIBDIR@|$(MULTIARCH_LIBDIR)|g' debian/vendor/udpt.in \
+	  >$(PACKAGE_DIR)/usr/share/grads/udpt

@@ -1,0 +1,48 @@
+Description: use the versioned object-info API with HDF5 1.12 and newer
+Author: CAMO packaging maintainers
+Forwarded: no
+
+--- a/src/gaio.c
++++ b/src/gaio.c
+@@ -4748,34 +4748,42 @@ gaint h5pattrs(hid_t h5id, char *vname, char *abbrv, gaint hdrflg, gaint fnum, c
+ #if USEHDF5 == 1
+ gaint h5pattrs(hid_t h5id, char *vname, char *abbrv, gaint hdrflg, gaint fnum, char* ftit, long cachesize) {
++#if H5_VERSION_GE(1,12,0)
++  H5O_info2_t oinfo;
++#else
+   H5O_info_t oinfo;
++#endif
+   H5T_class_t aclass=-1;
+   H5T_sign_t asign;
+   hid_t   vid,dsid,aid=-1,atype=-1,aspace=-1;
+   hsize_t ai,stosize=0;
+   size_t sz,asize,len=-1;
+   gaint   aindex,n_atts=0,n_gatts=0,rc,i,rank=-1,err=0,npts=-1;
+   char    *aname=NULL;
+   char    *cval=NULL,*string=NULL;
+   unsigned char *ucval=NULL;
+   short   *sval=NULL;
+   unsigned short  *usval=NULL;
+   gaint   *ival=NULL;
+   gauint  *uival=NULL;
+   long    *lval=NULL;
+   unsigned long *ulval=NULL;
+   gafloat  *fval=NULL;
+   gadouble *dval=NULL;
+ 
+   /* Use the file id or variable id to get the object info which contains the number of attributes */
+   if (cmpwrd("global",abbrv)) {
+     vid = h5id; /* jma not sure if this will work with H5AOpen ... */
+   }
+   else {
+     if (h5openvar(h5id, vname, &dsid, &vid, cachesize)) err=1;
+   }
+   if (!err) {
++#if H5_VERSION_GE(1,12,0)
++    rc = H5Oget_info3(vid,&oinfo,H5O_INFO_NUM_ATTRS);
++#else
+     rc = H5Oget_info(vid,&oinfo);
++#endif
+     if (rc<0) err=1;
+   }
+   if (err) return (0); /* zero attributes printed */

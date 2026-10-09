@@ -1,0 +1,30 @@
+# Build and release output
+/work/
+/.rpmbuild/
+/.debbuild/
+/.macports-local/
+/release/
+/outputs/
+/logs/
+
+# Built packages and logs
+*.rpm
+*.deb
+*.buildinfo
+*.changes
+*.dsc
+*.log
+
+# Compiled objects and libraries
+*.o
+*.a
+*.so
+*.so.*
+*.la
+*.lo
+
+# Editor and OS noise
+.DS_Store
+__MACOSX/
+*~
+*.swp

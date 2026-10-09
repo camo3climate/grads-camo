@@ -1,0 +1,188 @@
+Description: add txtwrite command for 1-D and 2-D text grid export
+Author: CAMO packaging maintainers
+Forwarded: no
+
+--- a/src/gauser.c
++++ b/src/gauser.c
+@@ -907,6 +907,15 @@
+     retcod = ncwrite(cmd, pcm);
+     goto retrn;
+   }
++  else if (cmpwrd("txtwrite",cmd)) {
++    if (pcm->pfid==NULL) {
++      gaprnt (0,"TXTWRITE error: no file open yet\n");
++      retcod = 1;
++      goto retrn;
++    }
++    retcod = txtwrite(cmd, pcm);
++    goto retrn;
++  }
+   else if (cmpwrd("pdefwrite",cmd)) {
+     if (pcm->pfid==NULL) {
+       gaprnt (0,"PDEFWRITE error: no file open yet\n"); retcod=1; goto retrn;}
+@@ -5087,6 +5096,7 @@
+   printf (" query ARG         show files, dimensions, config, and status\n");
+   printf (" set ARG VALUE     change analysis or drawing options\n");
+   printf (" display EXPR      evaluate and draw an expression (short: d)\n");
++  printf (" txtwrite FILE EXPR write a 1-D or 2-D grid as text\n");
+   printf (" clear             clear the graphics page\n");
+   printf (" run FILE          run a GrADS script\n");
+   printf (" gxprint FILE      write the current page\n");
+@@ -5097,6 +5107,147 @@
+   return (0);
+ }
+ 
++
++static char *txtw_dim_name(gaint dim) {
++  if (dim==0) return "lon";
++  if (dim==1) return "lat";
++  if (dim==2) return "lev";
++  if (dim==3) return "time";
++  if (dim==4) return "ens";
++  return "coord";
++}
++
++static void txtw_coord(char *buf, size_t buflen, gaint dim, gadouble gval,
++                       gadouble *vals, gadouble (*conv)(gadouble *, gadouble)) {
++struct dt dtim;
++gadouble val;
++
++  if (dim==3 && vals) {
++    gr2t(vals,gval,&dtim);
++    snprintf(buf,buflen,"%04d-%02d-%02dT%02d:%02d",
++             dtim.yr,dtim.mo,dtim.dy,dtim.hr,dtim.mn);
++  }
++  else {
++    if (conv) val = conv(vals,gval);
++    else val = gval;
++    snprintf(buf,buflen,"%g",val);
++  }
++}
++
++gaint txtwrite (char *cmd, struct gacmn *pcm) {
++struct gastat *pst=NULL;
++struct gagrid *pgr=NULL;
++FILE *fp=NULL;
++char *tok,*expr,*filename;
++char fname[1024],coord1[80],coord2[80],sep[2],*undefstr;
++gaint header=0,rc=1,i,j,idx,dimcnt;
++gadouble gval1,gval2;
++
++  undefstr = "undef";
++  sep[0] = ' '; sep[1] = '\0';
++
++  tok = nxtwrd(cmd);
++  if (tok==NULL) goto syntax;
++  while (cmpwrd("-csv",tok) || cmpwrd("-header",tok) || cmpwrd("-undef",tok)) {
++    if (cmpwrd("-csv",tok)) {
++      sep[0] = ',';
++    }
++    else if (cmpwrd("-header",tok)) {
++      header = 1;
++    }
++    else if (cmpwrd("-undef",tok)) {
++      tok = nxtwrd(tok);
++      if (tok==NULL) goto syntax;
++      undefstr = tok;
++    }
++    tok = nxtwrd(tok);
++    if (tok==NULL) goto syntax;
++  }
++
++  filename = tok;
++  getwrd(fname,filename,1023);
++  expr = nxtwrd(filename);
++  if (expr==NULL) goto syntax;
++
++  pst = getpst(pcm);
++  if (pst==NULL) goto cleanup;
++  if (gaexpr(expr,pst)) goto cleanup;
++  if (pst->type!=1 || pst->result.pgr==NULL) {
++    gaprnt(0,"TXTWRITE error: result must be grid data\n");
++    goto cleanup;
++  }
++  pgr = pst->result.pgr;
++  dimcnt = 0;
++  if (pgr->idim>-1) dimcnt++;
++  if (pgr->jdim>-1) dimcnt++;
++  if (dimcnt<1 || dimcnt>2) {
++    gaprnt(0,"TXTWRITE error: result must be a 1-D or 2-D grid\n");
++    goto cleanup;
++  }
++
++  fp = fopen(fname,"w");
++  if (fp==NULL) {
++    snprintf(pout,1255,"TXTWRITE error: unable to open %s\n",fname);
++    gaprnt(0,pout);
++    goto cleanup;
++  }
++
++  if (header) {
++    if (dimcnt==1)
++      fprintf(fp,"%s%svalue\n",txtw_dim_name(pgr->idim),sep);
++    else
++      fprintf(fp,"%s%s%s%svalue\n",txtw_dim_name(pgr->idim),sep,
++              txtw_dim_name(pgr->jdim),sep);
++  }
++
++  if (dimcnt==1) {
++    for (i=0; i<pgr->isiz; i++) {
++      gval1 = (gadouble)(pgr->dimmin[pgr->idim] + i);
++      txtw_coord(coord1,sizeof(coord1),pgr->idim,gval1,pgr->ivals,pgr->igrab);
++      if (*(pgr->umask+i))
++        fprintf(fp,"%s%s%.15g\n",coord1,sep,*(pgr->grid+i));
++      else
++        fprintf(fp,"%s%s%s\n",coord1,sep,undefstr);
++    }
++  }
++  else {
++    for (j=0; j<pgr->jsiz; j++) {
++      gval2 = (gadouble)(pgr->dimmin[pgr->jdim] + j);
++      txtw_coord(coord2,sizeof(coord2),pgr->jdim,gval2,pgr->jvals,pgr->jgrab);
++      for (i=0; i<pgr->isiz; i++) {
++        idx = j*pgr->isiz + i;
++        gval1 = (gadouble)(pgr->dimmin[pgr->idim] + i);
++        txtw_coord(coord1,sizeof(coord1),pgr->idim,gval1,pgr->ivals,pgr->igrab);
++        if (*(pgr->umask+idx))
++          fprintf(fp,"%s%s%s%s%.15g\n",coord1,sep,coord2,sep,*(pgr->grid+idx));
++        else
++          fprintf(fp,"%s%s%s%s%s\n",coord1,sep,coord2,sep,undefstr);
++      }
++    }
++  }
++
++  if (ferror(fp)) {
++    snprintf(pout,1255,"TXTWRITE error while writing %s\n",fname);
++    gaprnt(0,pout);
++    goto cleanup;
++  }
++  snprintf(pout,1255,"Wrote text data to %s\n",fname);
++  gaprnt(2,pout);
++  rc = 0;
++
++cleanup:
++  if (fp) fclose(fp);
++  if (pst) {
++    gafree(pst);
++    gree(pst,"txtw0");
++  }
++  return rc;
++
++syntax:
++  gaprnt(0,"TXTWRITE error: syntax is txtwrite [-csv] [-header] [-undef value] file expr\n");
++  return 1;
++}
++
+ /* Handle collect command */
+ 
+ gaint gacoll (char *cmd, struct gacmn *pcm) {
+--- a/src/grads.h
++++ b/src/grads.h
+@@ -911,6 +911,7 @@
+ gaint gahistory(char*, char *, struct gacmn *);
+ #endif /* READLINE == 1 */
+ gaint ncwrite (char *, struct gacmn *);
++gaint txtwrite (char *, struct gacmn *);
+ gaint sdfwatt (struct gacmn*, gaint, char *, char *, char *);
+ gaint sdfwdim (struct gafile *, struct gacmn *, gaint, gaint);
+ gaint sdfdefdim (gaint, char *, gaint, gaint *, gaint *, gaint, gaint);

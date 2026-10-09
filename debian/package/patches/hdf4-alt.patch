@@ -1,0 +1,51 @@
+Description: use Debian and Ubuntu HDF4 alternate library names
+Forwarded: not-needed
+
+--- a/configure.ac
++++ b/configure.ac
+@@ -707,1 +707,1 @@
+-    GA_SET_FLAGS([], [], [], [-ldf])
++    GA_SET_FLAGS([], [], [], [-ldfalt])
+@@ -709,1 +709,1 @@
+-    [ AC_CHECK_LIB([mfhdf], [main],
++    [ AC_CHECK_LIB([mfhdfalt], [main],
+@@ -711,2 +711,2 @@
+-#        GA_SET_LIB_VAR([hdf_libs], [mfhdf df jpeg z udunits])
+-        GA_SET_DYNLIB_VAR([hdf_libs], [mfhdf df jpeg z udunits2])
++#        GA_SET_LIB_VAR([hdf_libs], [mfhdfalt dfalt jpeg z udunits])
++        GA_SET_DYNLIB_VAR([hdf_libs], [mfhdfalt dfalt jpeg z udunits2])
+--- a/m4/hdf4.m4
++++ b/m4/hdf4.m4
+@@ -67,7 +67,7 @@ AC_DEFUN([AC_CHECK_HDF4],
+   ac_hdf4_save_CPPFLAGS=$CPPFLAGS
+   AS_IF([test "z$HDF4_PATH_INC" != "z"],
+     [
+-       HDF4_CFLAGS="-I$HDF4_PATH_INC"
++       HDF4_CFLAGS="-idirafter $HDF4_PATH_INC"
+        CPPFLAGS="$CPPFLAGS $HDF4_CFLAGS"
+        AC_CHECK_HEADER_NOCACHE_HDF4([mfhdf.h],[ac_hdf4_h='yes'])
+     ],
+@@ -83,6 +83,6 @@ AC_DEFUN([AC_CHECK_HDF4],
+            [
+              AC_MSG_NOTICE([searching hdf includes in $ac_hdf4_incdir])
+-             HDF4_CFLAGS="-I$ac_hdf4_incdir"
++             HDF4_CFLAGS="-idirafter $ac_hdf4_incdir"
+            ])
+         CPPFLAGS="$CPPFLAGS $HDF4_CFLAGS" 
+         AC_CHECK_HEADER_NOCACHE_HDF4([mfhdf.h],[ac_hdf4_h='yes'])
+@@ -189,11 +189,11 @@ dnl nor required everywhere
+   ac_hdf4_lib='no'
+   AC_CHECK_LIB_NOCACHE_HDF4([z],[deflate],
+   [ AC_CHECK_LIB_NOCACHE_HDF4([jpeg],[jpeg_start_compress],
+-    [ AC_CHECK_LIB_NOCACHE_HDF4([df],[Hopen],
+-      [ AC_CHECK_LIB_NOCACHE_HDF4([mfhdf],[SDstart],
++    [ AC_CHECK_LIB_NOCACHE_HDF4([dfalt],[Hopen],
++      [ AC_CHECK_LIB_NOCACHE_HDF4([mfhdfalt],[SDstart],
+         [ ac_hdf4_lib="yes"
+-          HDF4_LIBS="-lmfhdf -ldf -ljpeg -lz $HDF4_LIBS"
+-        ],[],[-ldf -ljpeg -lz])
++          HDF4_LIBS="-lmfhdfalt -ldfalt -ljpeg -lz $HDF4_LIBS"
++        ],[],[-ldfalt -ljpeg -lz])
+       ],[],[-ljpeg -lz])
+     ])
+   ])

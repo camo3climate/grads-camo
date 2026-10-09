@@ -1,0 +1,18 @@
+Description: Use FHS paths for data directory.
+Author: Alastair McKinstry <mckinstry@debian.org>
+Last-Updated: 2010-05-09
+Forwarded: no
+
+Index: grads-2.2.1/src/gxsubs.c
+===================================================================
+--- grads-2.2.1.orig/src/gxsubs.c
++++ grads-2.2.1/src/gxsubs.c
+@@ -32,7 +32,7 @@ void gree ();
+ /* The following variables are local to this file, and are used by
+    all the routines in the file.    */
+ 
+-static char *datad = "/usr/local/lib/grads";
++static char *datad = "/usr/share/grads";
+ static gadouble xsize, ysize;                /* Virtual page size  */
+ static gadouble rxsize, rysize;              /* Real page size     */
+ static gaint lwflg;                          /* Reduce lw due vpage*/

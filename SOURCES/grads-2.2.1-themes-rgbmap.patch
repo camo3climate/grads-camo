@@ -1,0 +1,903 @@
+--- grads-2.2.1.orig/src/gx.h
++++ grads-2.2.1/src/gx.h
+@@ -427,6 +427,7 @@
+ gaint gxdbqhersh (void);
+ void gxdbsethersh (gaint);
+ void gxdbsetfn (gaint, char *);
++void gxdbsetfontfamily (char *);
+ void gxdbsetpatt (gaint *, char *);
+ void gxdbqpatt (gaint, struct gxdbquery *);
+ void gxdbsettransclr (gaint);
+@@ -536,6 +537,8 @@
+ void gxnmap (gadouble, gadouble, gadouble, gadouble);
+ void gxmout (int, gadouble, gadouble, gadouble, gadouble, gadouble);
+ int  gxltln (struct mapprj *);
++void gxsetllasp (gadouble);
++gadouble gxqllasp (void);
+ int  gxscld (struct mapprj *, int, int);
+ int  gxnste (struct mapprj *);
+ void gxnpst (gadouble, gadouble, gadouble *, gadouble *);
+@@ -573,5 +576,3 @@
+ void gxdclip (gadouble, gadouble, gadouble, gadouble);
+ gaint gxdacol (gaint, gaint, gaint, gaint, gaint);
+ 
+-
+-
+--- grads-2.2.1.orig/src/gxdb.c
++++ grads-2.2.1/src/gxdb.c
+@@ -51,6 +51,7 @@
+ static char *fontname[100];
+ static char *fn_serif = "serif";
+ static char *fn_sans = "sans-serif";
++static char fn_user_sans[256];
+ static gaint fnbold[100];
+ static gaint fnitalic[100];
+ static gaint hershflag;                /* For fn 1 to 6, use Hershey fonts or not */
+@@ -106,6 +107,7 @@
+   fontname[2] = fn_sans;  fnbold[2] = 0;  fnitalic[2] = 1;
+   fontname[4] = fn_sans;   fnbold[4] = 1;  fnitalic[4] = 0;
+   fontname[5] = fn_serif;  fnbold[5] = 1;  fnitalic[5] = 0;
++  fn_user_sans[0] = '\0';
+ 
+   /* other flags for this and that */
+   hershflag  = 0;     /* zero, use hershey fonts.  1, use emulation. */  
+@@ -115,6 +117,22 @@
+    
+ }
+ 
++void gxdbsetfontfamily (char *str) {
++gaint i,len;
++
++  if (str==NULL) return;
++  len = 0;
++  while (*(str+len) && *(str+len)!='\n') len++;
++  while (len>0 && (*(str+len-1)==' ' || *(str+len-1)=='\t')) len--;
++  if (len<1) return;
++  if (len>255) len = 255;
++  for (i=0; i<len; i++) fn_user_sans[i] = *(str+i);
++  fn_user_sans[len] = '\0';
++  fontname[0] = fn_user_sans;
++  fontname[2] = fn_user_sans;
++  fontname[4] = fn_user_sans;
++}
++
+ /* Set a font name for a font from 10 to 99.  
+    Use of a font number that has no defined font family name will be handled
+    by the device backend, usually by using a default sans-serif font. */
+@@ -319,4 +337,3 @@
+     return (dbdevbck);
+ }
+ 
+-
+--- grads-2.2.1.orig/src/gxwmap.c
++++ grads-2.2.1/src/gxwmap.c
+@@ -35,6 +35,7 @@
+ static gadouble lomin, lomax, lamin, lamax;
+ static gadouble lonref;    /* Reference longitude for adjustment */
+ static gaint adjtyp = 0;  /* Direction adjustment class */
++static gadouble latlon_aspect_scale = 1.2;
+ 
+ /* Caching stuff */
+ 
+@@ -313,7 +314,7 @@
+ 
+   lndif = mpj->lnmx - mpj->lnmn;
+   ltdif = mpj->ltmx - mpj->ltmn;
+-  aspect = 1.2*ltdif/lndif;
++  aspect = latlon_aspect_scale*ltdif/lndif;
+   aspect2 = (mpj->ymx - mpj->ymn) / (mpj->xmx - mpj->xmn);
+   if (aspect > aspect2) {
+     xdif = (mpj->xmx - mpj->xmn) * aspect2/aspect;
+@@ -340,6 +341,14 @@
+   return (0);
+ }
+ 
++void gxsetllasp (gadouble scale) {
++  if (scale>0.0) latlon_aspect_scale = scale;
++}
++
++gadouble gxqllasp (void) {
++  return latlon_aspect_scale;
++}
++
+ /* Routine for north polar stereographic.  Projection scaling
+    is set along with level 1 linear scaling.   The only difficult
+    aspect to this is to set the level 1 linear scaling such that
+--- grads-2.2.1.orig/src/gauser.c
++++ grads-2.2.1/src/gauser.c
+@@ -52,6 +52,10 @@
+ static struct gacmn *savpcm;
+ static struct gxdsubs *dsubs=NULL; /* function pointers for display  */
+ static struct gxpsubs *psubs=NULL; /* function pointers for printing */
++static gaint panel_rows = 1;
++static gaint panel_cols = 1;
++static gadouble panel_gap = 0.12;
++#include "camo_colormap_impl.inc"
+ 
+ void gapysavpcm(struct gacmn *);   /* function prototype, used by gradspy */
+ 
+@@ -72,7 +75,7 @@
+ struct gadefn *pdf,*pdf2;
+ struct gaclct *clct,*clct2;
+ gaint rc,reinit,fnum,i,j,len,retcod,flag,xin,yin,bwin,fmtflg,tcolor,pos,size,*ioff,rem;
+-gadouble border,*dx,*dy;
++gadouble border,*dx,*dy,scale;
+ gafloat *rvals=NULL,*ivals=NULL,*jvals=NULL,*ival,*jval;
+ char cc[260], bgImage[256], fgImage[256], pdefname[256];
+ char *cmd,*rslt,*ccc,*ch,ext[10];
+@@ -201,6 +204,9 @@
+     pcm->xsiz = pcm->pxsize;
+     pcm->ysiz = pcm->pysize;
+     gxvpag (pcm->xsiz, pcm->ysiz, 0.0, pcm->xsiz, 0.0, pcm->ysiz);
++    panel_rows = 1;
++    panel_cols = 1;
++    panel_gap = 0.12;
+     /* reset gacmn and call gacln */
+     gainit();
+     gacln (pcm,1);
+@@ -319,6 +325,7 @@
+       gxdbck(0);             /* device backgroud reset to black only on reinit, not reset */
+     }
+     dsubs->gxdsignal(3);     /* tell hardware to re-enable anti-aliasing */
++    gxsetllasp(1.2);         /* reset lat/lon map aspect to classic GrADS */
+     gxdbsethersh(0);         /* set hershey font on   */
+     gxchdf(0);               /* set default font to 0 */ 
+     gxcolr(1);               /* set color to foreground */    
+@@ -569,7 +576,7 @@
+     gaprnt(0,"ERROR: The \"print\" command is no longer valid. Use \"gxprint\" instead.\n");
+     goto retrn;
+   }
+-  else if (cmpwrd("gxprint",cmd) || cmpwrd("printim",cmd)) {
++  else if (cmpwrd("gxprint",cmd) || cmpwrd("export",cmd)) {
+     /* check for output file name */
+     if ((ch=nxtwrd(com)) == NULL) {   
+       gaprnt (0,"GXPRINT error:  missing output file name\n");
+@@ -591,6 +598,7 @@
+     fgImage[0] = '\0';
+     tcolor = -1;
+     border = -1.0;
++    scale = -1.0;
+ 
+     /* parse the user-provided options */
+     while ( (cmd=nxtwrd(cmd))!=NULL && (com=nxtwrd(com))!=NULL) {
+@@ -645,7 +653,68 @@
+ 	  gaprnt(1,"GXPRINT warning: Missing transparent color number\n");
+ 	  if (cmd == NULL) break;
+ 	}
++      }
++      else if (cmpwrd("transparent",cmd)) {
++        tcolor = 0;
++      }
++      else if (cmpwrd("width",cmd)) {
++        com=nxtwrd(com);
++        if((cmd=nxtwrd(cmd)) != NULL) {
++          if (intprs(cmd,&xin) == NULL) {
++            gaprnt(1,"GXPRINT warning: Invalid width\n");
++            xin = -999;
++          }
++        } else {
++          gaprnt(1,"GXPRINT warning: Missing width\n");
++          if (cmd == NULL) break;
++        }
+       }
++      else if (cmpwrd("height",cmd)) {
++        com=nxtwrd(com);
++        if((cmd=nxtwrd(cmd)) != NULL) {
++          if (intprs(cmd,&yin) == NULL) {
++            gaprnt(1,"GXPRINT warning: Invalid height\n");
++            yin = -999;
++          }
++        } else {
++          gaprnt(1,"GXPRINT warning: Missing height\n");
++          if (cmd == NULL) break;
++        }
++      }
++      else if (cmpwrd("size",cmd)) {
++        com=nxtwrd(com);
++        if((cmd=nxtwrd(cmd)) != NULL) {
++          if (intprs(cmd,&xin) == NULL) {
++            gaprnt(1,"GXPRINT warning: Invalid width\n");
++            xin = -999;
++          }
++        } else {
++          gaprnt(1,"GXPRINT warning: Missing width\n");
++          if (cmd == NULL) break;
++        }
++        com=nxtwrd(com);
++        if((cmd=nxtwrd(cmd)) != NULL) {
++          if (intprs(cmd,&yin) == NULL) {
++            gaprnt(1,"GXPRINT warning: Invalid height\n");
++            yin = -999;
++          }
++        } else {
++          gaprnt(1,"GXPRINT warning: Missing height\n");
++          if (cmd == NULL) break;
++        }
++      }
++      else if (cmpwrd("scale",cmd)) {
++        com=nxtwrd(com);
++        if((cmd=nxtwrd(cmd)) != NULL) {
++          if (getdbl(cmd,&scale) == NULL || scale<=0.0) {
++            gaprnt(1,"GXPRINT warning: Invalid scale\n");
++            scale = -1.0;
++          }
++        } else {
++          gaprnt(1,"GXPRINT warning: Missing scale\n");
++          if (cmd == NULL) break;
++        }
++      }
+       /* set horizontal image size */
+       else if (*cmd=='x') {
+         if (intprs(cmd+1,&(xin)) == NULL ) {
+@@ -701,6 +770,22 @@
+       gaprnt (0,"GXPRINT error: Unable to determine output format\n");
+       retcod = 1;
+       goto retrn;
++    }
++
++    if (scale>0.0 && fmtflg>=5) {
++      if (xin<0 && yin<0) {
++        if (pcm->xsiz > pcm->ysiz) {
++          xin = (gaint)(800.0*scale + 0.5);
++          yin = (gaint)(((pcm->ysiz/pcm->xsiz)*800.0*scale) + 0.5);
++        } else {
++          xin = (gaint)(((pcm->xsiz/pcm->ysiz)*800.0*scale) + 0.5);
++          yin = (gaint)(800.0*scale + 0.5);
++        }
++      } else if (xin>0 && yin<0) {
++        yin = (gaint)(((gadouble)xin * pcm->ysiz/pcm->xsiz) + 0.5);
++      } else if (yin>0 && xin<0) {
++        xin = (gaint)(((gadouble)yin * pcm->xsiz/pcm->ysiz) + 0.5);
++      }
+     }
+     
+     /* Image size specs are incompatible with non-image formats */
+@@ -4656,15 +4741,115 @@
+ /* Handle help command */
+ 
+ gaint gahelp (char *cmd, struct gacmn *pcm) {
++char *arg;
+ 
+-  printf ("\nFor Complete Information See:  http://cola.gmu.edu/grads\n\n");
+-  printf ("Basic Commands:\n");
+-  printf (" OPEN <descr>      opens a data file \n");
+-  printf (" Query             shows current status \n");
+-  printf (" Clear             clears graphics window \n");
+-  printf (" SET <args>        sets options \n");
+-  printf (" Display expr      displays a variable graphically \n");
+-  printf (" QUIT              exits the program \n");
++  arg = nxtwrd(cmd);
++  if (arg && cmpwrdl("camo",arg)) {
++    printf ("\nGrADS CAMO additions:\n");
++    printf (" set theme classic|modern\n");
++    printf (" set rgbmap NAME [start] [reverse]\n");
++    printf (" set fontfamily NAME\n");
++    printf (" set panels ROW COL [gap]; set panel N; set panels off\n");
++    printf (" draw geovec LON LAT U V\n");
++    printf (" draw geocirc[f] LON LAT [RADIUS [km]]\n");
++    printf (" draw georec[f] LON1 LAT1 LON2 LAT2\n");
++    printf (" export FILE [transparent] [scale N]\n");
++    printf (" export FILE [width N|height N|size W H]\n");
++    printf (" help color     colormaps and URL\n");
++    printf (" help gxout     drawing output types\n");
++    printf (" help text      text and font hints\n");
++    printf (" help geo       geographic drawing hints\n");
++    printf (" help export    image/vector export hints\n");
++    printf (" CAMO project: https://github.com/camo3climate/grads-camo\n");
++    return (0);
++  }
++  if (arg && (cmpwrdl("color",arg) || cmpwrdl("rgbmap",arg))) {
++    printf ("\nCAMO colormaps:\n");
++    printf (" Usage: set rgbmap NAME [start] [reverse]\n");
++    printf (" Also:  set rgbmap NAME_r [start]\n");
++    printf (" Default start color: 16; 13 colors are assigned.\n");
++    printf (" Uniform: viridis plasma inferno magma cividis\n");
++    printf (" Sequential: Blues Greens Oranges Reds Greys YlOrRd YlGnBu\n");
++    printf (" Diverging: RdBu RdYlBu RdYlGn Spectral coolwarm seismic\n");
++    printf (" Misc: terrain ocean cubehelix turbo jet rainbow\n");
++    printf (" Examples:\n");
++    printf ("   set rgbmap viridis\n");
++    printf ("   set rgbmap RdBu_r\n");
++    printf ("   set rgbmap cividis 16 reverse\n");
++    printf (" Samples:\n");
++    printf ("   https://camo.fpark.tmu.ac.jp/grads-color-en.html\n");
++    printf (" Matplotlib reference:\n");
++    printf ("   https://matplotlib.org/stable/gallery/color/colormap_reference.html\n");
++    printf (" CAMO project: https://github.com/camo3climate/grads-camo\n");
++    return (0);
++  }
++  if (arg && cmpwrdl("gxout",arg)) {
++    printf ("\nCommon gxout types:\n");
++    printf (" set gxout contour    line contours\n");
++    printf (" set gxout shaded     shaded contours using rbcols/rgbmap\n");
++    printf (" set gxout grfill     grid-cell color fill\n");
++    printf (" set gxout grid       print grid values\n");
++    printf (" set gxout vector     vector arrows\n");
++    printf (" set gxout stream     streamlines\n");
++    printf (" set gxout barb       wind barbs\n");
++    printf (" set gxout line       line plot\n");
++    printf (" set gxout bar        bar plot\n");
++    printf (" Tip: use set rgbmap NAME before shaded/grfill maps.\n");
++    printf (" See also: help color, help camo\n");
++    return (0);
++  }
++  if (arg && cmpwrdl("text",arg)) {
++    printf ("\nText and font hints:\n");
++    printf (" set fontfamily NAME      select a system font family\n");
++    printf (" set strsiz X [Y]         text size\n");
++    printf (" set string COLOR JUST THICK ROTATION\n");
++    printf (" draw string X Y TEXT     draw text\n");
++    printf (" set clab on|off|forced   contour labels\n");
++    printf (" set grads on|off         GrADS label\n");
++    printf (" Theme: set theme modern  uses cleaner defaults.\n");
++    printf (" See also: help camo\n");
++    return (0);
++  }
++  if (arg && cmpwrdl("geo",arg)) {
++    printf ("\nGeographic drawing:\n");
++    printf (" draw geovec LON LAT U V\n");
++    printf (" draw geocirc LON LAT [RADIUS [km]]\n");
++    printf (" draw geocircf LON LAT [RADIUS [km]]\n");
++    printf (" draw georec LON1 LAT1 LON2 LAT2\n");
++    printf (" draw georecf LON1 LAT1 LON2 LAT2\n");
++    printf (" These commands use map coordinates on the current plot.\n");
++    printf (" See also: help camo\n");
++    return (0);
++  }
++  if (arg && cmpwrdl("export",arg)) {
++    printf ("\nExport shortcuts:\n");
++    printf (" export FILE\n");
++    printf (" export FILE transparent\n");
++    printf (" export FILE scale N\n");
++    printf (" export FILE width N\n");
++    printf (" export FILE height N\n");
++    printf (" export FILE size W H\n");
++    printf (" Supported output depends on the graphics backend.\n");
++    printf (" Examples: export fig.png transparent scale 2\n");
++    printf ("           export fig.pdf\n");
++    printf (" See also: help camo\n");
++    return (0);
++  }
++
++  printf ("\nGrADS %s CAMO build %s\n",GRADS_VERSION,CAMO_VERSION);
++  printf ("Basic commands:\n");
++  printf (" open FILE         open a GrADS descriptor file\n");
++  printf (" sdfopen FILE      open a self-describing data file\n");
++  printf (" query ARG         show files, dimensions, config, and status\n");
++  printf (" set ARG VALUE     change analysis or drawing options\n");
++  printf (" display EXPR      evaluate and draw an expression (short: d)\n");
++  printf (" clear             clear the graphics page\n");
++  printf (" run FILE          run a GrADS script\n");
++  printf (" gxprint FILE      write the current page\n");
++  printf (" quit              exit GrADS\n");
++  printf ("\nCAMO help topics: help camo, help color, help gxout, help text, help geo, help export\n");
++  printf ("CAMO project: https://github.com/camo3climate/grads-camo\n");
++  printf ("Packaged documentation is installed under /usr/share/doc/grads/.\n");
+   return (0);
+ }
+ 
+@@ -5061,6 +5368,35 @@
+     gaprnt (0,"SET error:  missing operand\n");
+     return (1);
+   }
++  else if (cmpwrd("theme",cmd)) {
++    return gaset_theme(nxtwrd(cmd),pcm);
++  }
++  else if (cmpwrd("fontfamily",cmd)) {
++    cmd = nxtwrd(cmd);
++    if (cmd==NULL) {
++      gaprnt(0,"SET FONTFAMILY Error: missing font family\n");
++      return(1);
++    }
++    if (dsubs->gxdckfont()==0 || psubs->gxpckfont()==0) {
++      gaprnt(0,"SET FONTFAMILY Error: graphics backends do not support non-Hershey fonts\n");
++      return(1);
++    }
++    gxdbsetfontfamily(cmd);
++    gxdbsethersh(1);
++    gxchdf(0);
++    snprintf(pout,1255,"fontfamily = %s\n",cmd);
++    gaprnt(2,pout);
++    return(0);
++  }
++  else if (cmpwrd("panels",cmd)) {
++    return gaset_panels(nxtwrd(cmd),pcm);
++  }
++  else if (cmpwrd("panel",cmd)) {
++    return gaset_panel(nxtwrd(cmd),pcm);
++  }
++  else if (cmpwrd("rgbmap",cmd)) {
++    return gaset_rgbmap(nxtwrd(cmd),pcm);
++  }
+   else if (cmpwrd("defval",cmd)) {
+     i1 = gaqdef (cmd, pcm, 1);
+     return (i1);
+--- grads-2.2.1.orig/src/grads.h
++++ grads-2.2.1/src/grads.h
+@@ -16,6 +16,11 @@
+ 
+ #define UDPVERS 1
+ 
++/* RPM packaging defines this from the central CAMO release setting. */
++#ifndef CAMO_VERSION
++#define CAMO_VERSION "development"
++#endif
++
+ /* Handling of missing data values. After the data I/O is done, 
+    grid values are tested to see if they are within a small range 
+    (+-value/EPSILON) of the missing value. If true, then the undef 
+--- grads-2.2.1.orig/src/grads.c
++++ grads-2.2.1/src/grads.c
+@@ -206,6 +206,7 @@
+   if (ipcflg) printf("\n<IPC>" );  /* delimit splash screen */
+  
+   printf("\nGrid Analysis and Display System (GrADS) Version %s\n",gatxtl(GRADS_VERSION,0));
++  printf("Unofficial CAMO build %s (not an official upstream release)\n",CAMO_VERSION);
+   printf("Copyright (C) 1988-2022 by George Mason University\n");
+   printf("GrADS comes with ABSOLUTELY NO WARRANTY\n");
+   printf("See file COPYRIGHT for more information\n\n");
+@@ -817,4 +818,3 @@
+   }
+   return (NULL);
+ }
+-
+--- /dev/null
++++ grads-2.2.1/src/camo_colormap_impl.inc
+@@ -0,0 +1,202 @@
++#define CAMO_RGBMAP_COLORS 13
++
++static gaint gacamo_copyword (char *src, char *dst, gaint dstlen) {
++gaint i;
++
++  if (src==NULL || dst==NULL || dstlen<1) return(0);
++  for (i=0; src[i] && src[i]!=' ' && src[i]!='\t' && i<dstlen-1; i++) dst[i] = src[i];
++  dst[i] = '\0';
++  return(i);
++}
++
++static gaint gacamo_has_reverse_suffix (char *name) {
++size_t len;
++
++  if (name==NULL) return(0);
++  len = strlen(name);
++  if (len<3) return(0);
++  if (name[len-2]!='_') return(0);
++  if (name[len-1]=='r' || name[len-1]=='R') {
++    name[len-2] = '\0';
++    return(1);
++  }
++  return(0);
++}
++
++#include "camo_colormap_tables.inc"
++
++static gaint gaset_panel (char *cmd, struct gacmn *pcm) {
++gaint panel,row,col;
++gadouble pw,ph,xlo,xhi,ylo,yhi;
++
++  if (cmd==NULL) {
++    gaprnt(0,"SET PANEL Error: missing panel number\n");
++    return(1);
++  }
++  if (intprs(cmd,&panel) == NULL) {
++    gaprnt(0,"SET PANEL Error: invalid panel number\n");
++    return(1);
++  }
++  if (panel<1 || panel>panel_rows*panel_cols) {
++    gaprnt(0,"SET PANEL Error: panel number is outside the current layout\n");
++    return(1);
++  }
++  row = (panel-1) / panel_cols;
++  col = (panel-1) % panel_cols;
++  pw = (pcm->pxsize - panel_gap*(gadouble)(panel_cols-1)) / (gadouble)panel_cols;
++  ph = (pcm->pysize - panel_gap*(gadouble)(panel_rows-1)) / (gadouble)panel_rows;
++  if (pw<=0.0 || ph<=0.0) {
++    gaprnt(0,"SET PANEL Error: panel gap is too large\n");
++    return(1);
++  }
++  xlo = (gadouble)col * (pw + panel_gap);
++  xhi = xlo + pw;
++  yhi = pcm->pysize - (gadouble)row * (ph + panel_gap);
++  ylo = yhi - ph;
++  pcm->xsiz = pw;
++  pcm->ysiz = ph;
++  pcm->paflg = 0;
++  pcm->pass = 0;
++  gxvpag (pcm->xsiz, pcm->ysiz, xlo, xhi, ylo, yhi);
++  snprintf(pout,1255,"panel = %i (%i x %i)\n",panel,panel_rows,panel_cols);
++  gaprnt(2,pout);
++  return(0);
++}
++
++static gaint gaset_panels (char *cmd, struct gacmn *pcm) {
++gaint rows,cols;
++gadouble gap;
++
++  if (cmd==NULL) {
++    gaprnt(0,"SET PANELS Error: missing row count\n");
++    return(1);
++  }
++  if (cmpwrd("off",cmd) || cmpwrd("reset",cmd)) {
++    panel_rows = 1;
++    panel_cols = 1;
++    panel_gap = 0.12;
++    pcm->xsiz = pcm->pxsize;
++    pcm->ysiz = pcm->pysize;
++    pcm->paflg = 0;
++    pcm->pass = 0;
++    gxvpag (pcm->xsiz, pcm->ysiz, 0.0, pcm->xsiz, 0.0, pcm->ysiz);
++    gaprnt(2,"panels = off\n");
++    return(0);
++  }
++  if (intprs(cmd,&rows) == NULL) {
++    gaprnt(0,"SET PANELS Error: invalid row count\n");
++    return(1);
++  }
++  cmd = nxtwrd(cmd);
++  if (cmd==NULL || intprs(cmd,&cols) == NULL) {
++    gaprnt(0,"SET PANELS Error: invalid column count\n");
++    return(1);
++  }
++  gap = 0.12;
++  if ((cmd=nxtwrd(cmd)) != NULL) {
++    if (getdbl(cmd,&gap) == NULL) {
++      gaprnt(0,"SET PANELS Error: invalid gap\n");
++      return(1);
++    }
++  }
++  if (rows<1 || rows>9 || cols<1 || cols>9 || gap<0.0) {
++    gaprnt(0,"SET PANELS Error: rows/columns must be 1-9 and gap must be non-negative\n");
++    return(1);
++  }
++  panel_rows = rows;
++  panel_cols = cols;
++  panel_gap = gap;
++  snprintf(pout,1255,"panels = %i x %i gap %g\n",panel_rows,panel_cols,panel_gap);
++  gaprnt(2,pout);
++  return gaset_panel("1",pcm);
++}
++
++static gaint gaset_rgbmap (char *cmd, struct gacmn *pcm) {
++gaint p,i,j,start,rev,npal;
++char namebuf[64], dispname[80];
++
++  if (cmd==NULL) {
++    gaprnt(0,"SET RGBMAP Error: missing palette name\n");
++    gaprnt(0,"SET RGBMAP Error: type 'help color' for available palettes\n");
++    return(1);
++  }
++  gacamo_copyword(cmd,namebuf,64);
++  rev = gacamo_has_reverse_suffix(namebuf);
++  p = -1;
++  npal = sizeof(palettes) / sizeof(palettes[0]);
++  for (i=0; i<npal; i++) {
++    if (cmpwrdl((char *)palettes[i].key,namebuf) || cmpwrdl((char *)palettes[i].name,namebuf)) p = i;
++  }
++  if (p<0) {
++    snprintf(pout,1255,"SET RGBMAP Error: unknown palette: %s\n",namebuf);
++    gaprnt(0,pout);
++    gaprnt(0,"SET RGBMAP Error: type 'help color' for available palettes\n");
++    return(1);
++  }
++  start = 16;
++  while ((cmd = nxtwrd(cmd)) != NULL) {
++    if (cmpwrdl("reverse",cmd) || cmpwrdl("rev",cmd)) rev = 1;
++    else {
++      if (intprs(cmd,&start) == NULL) {
++        gaprnt(0,"SET RGBMAP Error: expected color number or reverse\n");
++        return(1);
++      }
++    }
++  }
++  if (start<16 || start>2036) {
++    gaprnt(0,"SET RGBMAP Error: start color must be between 16 and 2036\n");
++    return(1);
++  }
++  for (i=0; i<CAMO_RGBMAP_COLORS; i++) {
++    j = rev ? CAMO_RGBMAP_COLORS-1-i : i;
++    gxacol(start+i, palettes[p].red[j], palettes[p].green[j], palettes[p].blue[j], 255);
++    pcm->rbcols[i] = start+i;
++  }
++  pcm->rbflg = CAMO_RGBMAP_COLORS;
++  snprintf(dispname,80,"%s%s",palettes[p].name,rev ? "_r" : "");
++  snprintf(pout,1255,"rgbmap %s loaded into colors %i-%i; rainbow colors now use this palette\n",
++           dispname,start,start+CAMO_RGBMAP_COLORS-1);
++  gaprnt(2,pout);
++  return(0);
++}
++
++static gaint gaset_theme (char *cmd, struct gacmn *pcm) {
++  if (cmd==NULL) {
++    gaprnt(0,"SET THEME Error: missing theme name\n");
++    return(1);
++  }
++  if (cmpwrd("classic",cmd)) {
++    gxsetllasp(1.2);
++    gxdbsethersh(0);
++    gxchdf(0);
++    pcm->grflag = 1;
++    pcm->grstyl = 5;
++    pcm->grcolr = 15;
++    pcm->grthck = 4;
++    pcm->mapcol = -9;
++    pcm->mapstl = 1;
++    pcm->mapthk = 1;
++    gaprnt(2,"theme = classic\n");
++    return(0);
++  }
++  if (cmpwrd("modern",cmd)) {
++    gxsetllasp(1.0);
++    if (dsubs && psubs && dsubs->gxdckfont()!=0 && psubs->gxpckfont()!=0) {
++      gxdbsethersh(1);
++      gxchdf(0);
++    }
++    pcm->grflag = 1;
++    pcm->grstyl = 1;
++    pcm->grcolr = 15;
++    pcm->grthck = 1;
++    pcm->mapcol = 15;
++    pcm->mapstl = 1;
++    pcm->mapthk = 2;
++    pcm->aaflg = 1;
++    gxsignal(3);
++    gaprnt(2,"theme = modern\n");
++    return(0);
++  }
++  gaprnt(0,"SET THEME Error: valid themes are classic or modern\n");
++  return(1);
++}
+
+--- /dev/null
++++ grads-2.2.1/src/camo_colormap_tables.inc
+@@ -0,0 +1,251 @@
++/* Generated 13-color RGB tables for CAMO/GrADS set rgbmap. */
++/* Source: Matplotlib 3.10.8 built-in colormaps. */
++/* These are intended as implementation input, not necessarily a drop-in patch. */
++
++struct gapalette {
++  const char *key;       /* lowercase matching key */
++  const char *name;      /* display/canonical Matplotlib name */
++  const char *group;
++  gaint red[13];
++  gaint green[13];
++  gaint blue[13];
++};
++
++static struct gapalette palettes[58] = {
++  /* Perceptually uniform sequential */
++  {"viridis", "viridis", "Perceptually uniform sequential",
++    { 68,  72,  68,  59,  49,  40,  33,  32,  53,  94, 144, 200, 253},
++    {  1,  31,  57,  82, 104, 124, 145, 164, 183, 201, 215, 224, 231},
++    { 84, 112, 131, 139, 142, 142, 140, 134, 121,  98,  67,  32,  37}},
++  {"plasma", "plasma", "Perceptually uniform sequential",
++    { 13,  58,  92, 126, 156, 181, 204, 222, 237, 248, 253, 251, 240},
++    {  8,   4,   1,   3,  23,  47,  71,  95, 121, 149, 180, 213, 249},
++    {135, 154, 166, 168, 158, 140, 120, 101,  83,  64,  47,  36,  33}},
++  {"inferno", "inferno", "Perceptually uniform sequential",
++    {  0,  17,  50,  87, 120, 154, 188, 216, 237, 249, 251, 244, 252},
++    {  0,  10,  10,  16,  28,  40,  55,  76, 105, 142, 182, 223, 255},
++    {  4,  48,  94, 110, 109, 101,  84,  62,  37,   9,  26,  83, 164}},
++  {"magma", "magma", "Perceptually uniform sequential",
++    {  0,  16,  44,  81, 114, 147, 183, 216, 241, 252, 254, 254, 252},
++    {  0,  11,  17,  18,  31,  43,  55,  69,  96, 137, 176, 215, 253},
++    {  4,  45,  95, 124, 129, 128, 121, 108,  93,  97, 120, 153, 191}},
++  {"cividis", "cividis", "Perceptually uniform sequential",
++    {  0,   0,  42,  67,  87, 106, 125, 145, 165, 188, 210, 233, 254},
++    { 34,  49,  63,  78,  93, 108, 124, 139, 156, 174, 192, 211, 232},
++    { 78, 112, 109, 108, 109, 113, 120, 120, 116, 108,  96,  78,  56}},
++  /* Common sequential */
++  {"greys", "Greys", "Common sequential",
++    {255, 245, 233, 217, 198, 176, 149, 126, 104,  81,  51,  24,   0},
++    {255, 245, 233, 217, 198, 176, 149, 126, 104,  81,  51,  24,   0},
++    {255, 245, 233, 217, 198, 176, 149, 126, 104,  81,  51,  24,   0}},
++  {"purples", "Purples", "Common sequential",
++    {252, 243, 232, 218, 198, 178, 158, 138, 121, 105,  91,  77,  63},
++    {251, 242, 231, 218, 199, 178, 154, 134, 110,  80,  52,  26,   0},
++    {253, 248, 242, 235, 225, 213, 200, 191, 178, 163, 149, 137, 125}},
++  {"blues", "Blues", "Common sequential",
++    {247, 231, 214, 198, 171, 141, 106,  79,  55,  32,  16,   8,   8},
++    {251, 240, 230, 219, 208, 193, 174, 155, 135, 112,  91,  70,  48},
++    {255, 250, 244, 239, 230, 221, 214, 203, 192, 180, 164, 139, 107}},
++  {"greens", "Greens", "Common sequential",
++    {247, 235, 219, 199, 174, 146, 115,  82,  55,  34,  11,   0,   0},
++    {252, 247, 241, 233, 222, 210, 196, 179, 160, 138, 119,  95,  68},
++    {245, 231, 214, 192, 167, 143, 118, 101,  85,  68,  52,  38,  27}},
++  {"oranges", "Oranges", "Common sequential",
++    {255, 254, 254, 253, 253, 253, 253, 245, 233, 216, 182, 153, 127},
++    {245, 235, 223, 208, 185, 163, 140, 117,  94,  72,  60,  49,  39},
++    {235, 216, 192, 162, 125,  92,  59,  32,  13,   1,   2,   3,   4}},
++  {"reds", "Reds", "Common sequential",
++    {255, 254, 253, 252, 252, 252, 251, 243, 227, 202, 177, 144, 103},
++    {245, 231, 212, 187, 160, 133, 105,  74,  47,  24,  18,  10,   0},
++    {240, 220, 194, 161, 130, 101,  74,  54,  39,  29,  24,  18,  13}},
++  {"ylorbr", "YlOrBr", "Common sequential",
++    {255, 255, 255, 254, 254, 254, 254, 242, 225, 203, 169, 136, 102},
++    {255, 250, 241, 227, 206, 182, 152, 125, 100,  75,  60,  47,  37},
++    {229, 202, 174, 144, 101,  67,  41,  27,  14,   2,   3,   5,   6}},
++  {"ylorrd", "YlOrRd", "Common sequential",
++    {255, 255, 255, 254, 254, 254, 253, 252, 244, 226, 201, 168, 128},
++    {255, 243, 231, 217, 191, 166, 140,  99,  61,  25,   8,   0,   0},
++    {204, 175, 147, 118,  90,  71,  60,  48,  37,  28,  35,  38,  38}},
++  {"orrd", "OrRd", "Common sequential",
++    {255, 254, 254, 253, 253, 253, 252, 243, 231, 214, 190, 161, 127},
++    {247, 237, 226, 212, 195, 172, 140, 114,  83,  47,  15,   0,   0},
++    {236, 212, 187, 158, 141, 118,  89,  78,  58,  30,  10,   0,   0}},
++  {"purd", "PuRd", "Common sequential",
++    {247, 236, 225, 212, 205, 208, 223, 228, 223, 205, 169, 135, 103},
++    {244, 231, 212, 185, 160, 133, 100,  61,  33,  18,   6,   0,   0},
++    {249, 242, 232, 218, 205, 192, 175, 150, 121,  86,  73,  55,  31}},
++  {"rdpu", "RdPu", "Common sequential",
++    {255, 254, 253, 252, 251, 249, 247, 229, 205, 173, 139, 105,  73},
++    {247, 232, 215, 197, 172, 141, 103,  69,  35,   1,   1,   1,   0},
++    {243, 229, 212, 192, 185, 174, 161, 154, 143, 126, 121, 115, 106}},
++  {"bupu", "BuPu", "Common sequential",
++    {247, 232, 214, 191, 169, 152, 140, 140, 139, 136, 131, 111,  77},
++    {252, 241, 228, 211, 196, 176, 149, 121,  93,  64,  31,  10,   0},
++    {253, 247, 240, 230, 222, 211, 198, 184, 170, 156, 134, 107,  75}},
++  {"gnbu", "GnBu", "Common sequential",
++    {247, 232, 218, 204, 180, 153, 122,  93,  66,  42,  19,   8,   8},
++    {252, 246, 240, 235, 226, 215, 204, 187, 166, 139, 115,  90,  64},
++    {240, 226, 212, 197, 186, 186, 196, 206, 204, 190, 178, 157, 129}},
++  {"pubu", "PuBu", "Common sequential",
++    {255, 242, 227, 208, 180, 150, 115,  74,  38,   5,   4,   3,   2},
++    {247, 236, 224, 209, 196, 182, 169, 152, 133, 111,  97,  78,  56},
++    {251, 245, 238, 230, 223, 215, 207, 197, 187, 175, 152, 123,  88}},
++  {"ylgnbu", "YlGnBu", "Common sequential",
++    {255, 243, 225, 198, 151, 107,  64,  41,  31,  34,  36,  27,   8},
++    {255, 250, 243, 233, 214, 198, 181, 157, 128,  93,  65,  44,  29},
++    {217, 191, 178, 180, 185, 190, 196, 193, 184, 168, 154, 128,  88}},
++  {"pubugn", "PuBuGn", "Common sequential",
++    {255, 242, 227, 208, 180, 145, 102,  70,  37,   2,   1,   1,   1},
++    {247, 233, 221, 209, 196, 182, 169, 152, 139, 129, 115,  95,  70},
++    {251, 244, 237, 230, 223, 215, 207, 197, 174, 137, 105,  77,  54}},
++  {"bugn", "BuGn", "Common sequential",
++    {247, 235, 221, 204, 170, 136, 101,  77,  55,  34,  11,   0,   0},
++    {252, 247, 242, 236, 223, 209, 194, 181, 162, 138, 119,  95,  68},
++    {253, 250, 243, 230, 211, 189, 163, 133, 102,  68,  52,  38,  27}},
++  {"ylgn", "YlGn", "Common sequential",
++    {255, 250, 237, 217, 188, 156, 119,  83,  55,  34,  11,   0,   0},
++    {255, 253, 248, 240, 227, 214, 198, 180, 158, 131, 113,  92,  69},
++    {229, 200, 178, 163, 149, 135, 121, 102,  84,  67,  59,  50,  41}},
++  /* Diverging */
++  {"piyg", "PiYG", "Diverging",
++    {142, 187, 213, 232, 245, 252, 247, 233, 199, 154, 109,  70,  39},
++    {  1,  22,  87, 151, 196, 228, 247, 245, 232, 205, 173, 138, 100},
++    { 82, 117, 157, 196, 225, 240, 246, 214, 159,  97,  54,  32,  25}},
++  {"prgn", "PRGn", "Diverging",
++    { 64, 108, 141, 174, 206, 234, 246, 222, 183, 126,  68,  22,   0},
++    {  0,  35,  87, 139, 181, 217, 247, 241, 226, 195, 155, 111,  68},
++    { 75, 121, 157, 189, 215, 234, 246, 217, 177, 127,  82,  50,  27}},
++  {"brbg", "BrBG", "Diverging",
++    { 84, 130, 173, 207, 231, 246, 244, 206, 152,  88,  35,   1,   0},
++    { 48,  75, 112, 162, 207, 234, 245, 236, 215, 176, 134,  95,  60},
++    {  5,   9,  33,  86, 148, 203, 245, 232, 205, 167, 126,  86,  48}},
++  {"puor", "PuOr", "Diverging",
++    {127, 170, 208, 239, 253, 253, 246, 221, 191, 152, 112,  77,  45},
++    { 59,  83, 115, 158, 197, 228, 246, 223, 187, 141,  88,  32,   0},
++    {  8,   6,  15,  60, 127, 192, 247, 237, 218, 190, 159, 125,  75}},
++  {"rdgy", "RdGy", "Diverging",
++    {103, 165, 201, 229, 247, 253, 254, 229, 199, 159, 115,  68,  26},
++    {  0,  20,  71, 131, 183, 225, 254, 229, 199, 159, 115,  68,  26},
++    { 31,  41,  65, 104, 153, 208, 254, 229, 199, 159, 115,  68,  26}},
++  {"rdbu", "RdBu", "Diverging",
++    {103, 165, 201, 229, 247, 252, 246, 215, 167, 104,  55,  28,   5},
++    {  0,  20,  71, 131, 183, 223, 247, 232, 208, 171, 131,  92,  48},
++    { 31,  41,  65, 104, 153, 207, 247, 241, 228, 208, 187, 159,  97}},
++  {"rdylbu", "RdYlBu", "Diverging",
++    {165, 206, 234, 249, 253, 254, 254, 229, 189, 142,  99,  65,  49},
++    {  0,  40,  87, 142, 191, 229, 255, 245, 226, 194, 153, 106,  54},
++    { 38,  39,  57,  82, 113, 151, 192, 239, 238, 220, 199, 175, 149}},
++  {"rdylgn", "RdYlGn", "Diverging",
++    {165, 206, 234, 249, 253, 254, 254, 223, 183, 132,  75,  21,   0},
++    {  0,  40,  87, 142, 191, 229, 255, 242, 224, 202, 176, 144, 104},
++    { 38,  39,  57,  82, 111, 147, 190, 147, 117, 102,  92,  76,  55}},
++  {"spectral", "Spectral", "Diverging",
++    {158, 203, 233, 249, 253, 254, 255, 234, 191, 134,  84,  58,  94},
++    {  1,  51,  92, 142, 191, 229, 255, 247, 229, 207, 174, 126,  79},
++    { 66,  77,  71,  82, 111, 147, 190, 158, 160, 165, 173, 184, 162}},
++  {"coolwarm", "coolwarm", "Diverging",
++    { 59,  84, 111, 141, 170, 197, 221, 239, 247, 244, 231, 209, 180},
++    { 76, 112, 146, 176, 199, 214, 220, 206, 184, 152, 116,  73,   4},
++    {192, 222, 243, 254, 253, 242, 220, 189, 156, 122,  91,  63,  38}},
++  {"bwr", "bwr", "Diverging",
++    {  0,  42,  84, 128, 170, 212, 255, 255, 255, 255, 255, 255, 255},
++    {  0,  42,  84, 128, 170, 212, 254, 212, 170, 126,  84,  42,   0},
++    {255, 255, 255, 255, 255, 255, 254, 212, 170, 126,  84,  42,   0}},
++  {"seismic", "seismic", "Diverging",
++    {  0,   0,   0,   1,  85, 169, 255, 255, 255, 254, 211, 170, 128},
++    {  0,   0,   0,   1,  85, 169, 253, 169,  85,   0,   0,   0,   0},
++    { 76, 135, 194, 255, 255, 255, 253, 169,  85,   0,   0,   0,   0}},
++  /* Cyclic and miscellaneous */
++  {"twilight", "twilight", "Cyclic and miscellaneous",
++    {226, 179, 123,  98,  94,  78,  47,  88, 142, 178, 198, 212, 226},
++    {217, 198, 161, 118,  67,  24,  20,  22,  44,  86, 138, 188, 217},
++    {226, 206, 194, 186, 165, 111,  54,  71,  80,  82, 109, 172, 226}},
++  {"twilight_shifted", "twilight_shifted", "Cyclic and miscellaneous",
++    { 48,  78,  94,  98, 124, 179, 226, 212, 198, 178, 141,  88,  47},
++    { 20,  24,  69, 118, 162, 198, 217, 188, 137,  86,  43,  22,  20},
++    { 55, 111, 166, 186, 194, 206, 226, 172, 108,  82,  80,  71,  54}},
++  {"hsv", "hsv", "Cyclic and miscellaneous",
++    {255, 255, 252, 132,   8,   0,   0,   0,   0, 114, 238, 255, 255},
++    {  0, 124, 245, 255, 255, 255, 255, 140,  16,   0,   0,   0,   0},
++    {  0,   0,   0,   0,   0, 116, 246, 255, 255, 255, 255, 148,  24}},
++  {"ocean", "ocean", "Cyclic and miscellaneous",
++    {  0,   0,   0,   0,   0,   0,   0,   0,   0,  66, 129, 192, 255},
++    {128,  96,  64,  32,   0,  32,  64,  96, 128, 160, 192, 224, 255},
++    {  0,  21,  42,  64,  85, 106, 128, 149, 170, 192, 213, 234, 255}},
++  {"terrain", "terrain", "Cyclic and miscellaneous",
++    { 51,  23,   0,   1,  85, 169, 254, 212, 170, 129, 171, 213, 255},
++    { 51, 107, 160, 204, 221, 238, 254, 200, 146,  94, 147, 201, 255},
++    {153, 209, 232, 102, 119, 136, 152, 130, 107,  86, 142, 199, 255}},
++  {"gist_earth", "gist_earth", "Cyclic and miscellaneous",
++    {  0,  14,  28,  43,  54,  64,  94, 135, 170, 189, 206, 230, 253},
++    {  0,  32,  77, 115, 135, 148, 160, 170, 179, 171, 171, 199, 251},
++    {  0, 118, 122, 126, 112,  86,  75,  85,  92,  98, 133, 188, 251}},
++  {"cubehelix", "cubehelix", "Cyclic and miscellaneous",
++    {  0,  24,  25,  22,  43,  96, 161, 204, 212, 198, 195, 217, 255},
++    {  0,  16,  45,  83, 111, 122, 121, 124, 144, 180, 217, 242, 255},
++    {  0,  39,  72,  76,  57,  47,  74, 134, 198, 238, 243, 239, 255}},
++  {"turbo", "turbo", "Cyclic and miscellaneous",
++    { 48,  67,  70,  40,  26,  85, 164, 217, 250, 251, 228, 185, 122},
++    { 18,  78, 133, 188, 228, 250, 252, 228, 186, 126,  69,  30,   4},
++    { 59, 186, 250, 235, 182, 118,  60,  54,  57,  33,  10,   2,   3}},
++  {"jet", "jet", "Cyclic and miscellaneous",
++    {  0,   0,   0,   0,   0,  54, 125, 193, 255, 255, 255, 223, 128},
++    {  0,   0,  40, 128, 212, 255, 255, 255, 230, 148,  71,   0,   0},
++    {128, 223, 255, 255, 255, 193, 122,  54,   0,   0,   0,   0,   0}},
++  {"rainbow", "rainbow", "Cyclic and miscellaneous",
++    {128,  86,  44,   0,  42,  84, 128, 171, 212, 255, 255, 255, 255},
++    {  0,  65, 126, 181, 221, 246, 255, 246, 221, 179, 126,  65,   0},
++    {255, 253, 247, 235, 221, 203, 180, 155, 128,  96,  65,  33,   0}},
++  {"nipy_spectral", "nipy_spectral", "Cyclic and miscellaneous",
++    {  0, 130,   0,   0,   0,   0,   0,   0, 204, 255, 255, 215, 204},
++    {  0,   0,   0, 120, 164, 165, 188, 244, 249, 201,  45,   0, 204},
++    {  0, 147, 185, 221, 187,  93,   0,   0,   0,   0,   0,   0, 204}},
++  {"gist_ncar", "gist_ncar", "Cyclic and miscellaneous",
++    {  0,   0,   0,   0,  38, 124, 219, 255, 255, 255, 179, 239, 254},
++    {  0,  41, 198, 251, 240, 245, 255, 216, 112,   0,  38, 151, 248},
++    {128, 139, 255, 176,   0,   0,  32,   1,   6,  71, 255, 241, 254}},
++  {"gray", "gray", "Cyclic and miscellaneous",
++    {  0,  21,  42,  64,  85, 106, 128, 149, 170, 192, 213, 234, 255},
++    {  0,  21,  42,  64,  85, 106, 128, 149, 170, 192, 213, 234, 255},
++    {  0,  21,  42,  64,  85, 106, 128, 149, 170, 192, 213, 234, 255}},
++  {"bone", "bone", "Cyclic and miscellaneous",
++    {  0,  18,  37,  56,  74,  93, 112, 130, 149, 169, 198, 226, 255},
++    {  0,  18,  37,  56,  74,  97, 123, 149, 174, 200, 218, 237, 255},
++    {  0,  26,  51,  78, 103, 125, 144, 162, 181, 200, 218, 237, 255}},
++  {"pink", "pink", "Cyclic and miscellaneous",
++    { 30,  96, 132, 161, 185, 199, 208, 217, 225, 233, 241, 248, 255},
++    {  0,  60,  84, 104, 120, 145, 172, 194, 215, 233, 241, 248, 255},
++    {  0,  60,  84, 104, 120, 134, 148, 159, 170, 182, 209, 233, 255}},
++  {"hot", "hot", "Cyclic and miscellaneous",
++    { 11,  66, 121, 179, 234, 255, 255, 255, 255, 255, 255, 255, 255},
++    {  0,   0,   0,   0,   0,  34,  92, 147, 202, 255, 255, 255, 255},
++    {  0,   0,   0,   0,   0,   0,   0,   0,   0,   7,  90, 172, 255}},
++  {"afmhot", "afmhot", "Cyclic and miscellaneous",
++    {  0,  42,  84, 128, 170, 212, 255, 255, 255, 255, 255, 255, 255},
++    {  0,   0,   0,   0,  42,  84, 128, 171, 212, 255, 255, 255, 255},
++    {  0,   0,   0,   0,   0,   0,   1,  43,  85, 129, 171, 213, 255}},
++  {"copper", "copper", "Cyclic and miscellaneous",
++    {  0,  26,  52,  79, 105, 131, 158, 184, 210, 237, 255, 255, 255},
++    {  0,  16,  33,  50,  66,  83, 100, 116, 133, 150, 166, 183, 199},
++    {  0,  10,  21,  32,  42,  53,  64,  74,  85,  96, 106, 116, 127}},
++  {"spring", "spring", "Cyclic and miscellaneous",
++    {255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255},
++    {  0,  21,  42,  64,  85, 106, 128, 149, 170, 192, 213, 234, 255},
++    {255, 234, 213, 191, 170, 149, 127, 106,  85,  63,  42,  21,   0}},
++  {"summer", "summer", "Cyclic and miscellaneous",
++    {  0,  21,  42,  64,  85, 106, 128, 149, 170, 192, 213, 234, 255},
++    {128, 138, 148, 160, 170, 180, 192, 202, 212, 224, 234, 244, 255},
++    {102, 102, 102, 102, 102, 102, 102, 102, 102, 102, 102, 102, 102}},
++  {"autumn", "autumn", "Cyclic and miscellaneous",
++    {255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255},
++    {  0,  21,  42,  64,  85, 106, 128, 149, 170, 192, 213, 234, 255},
++    {  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0}},
++  {"winter", "winter", "Cyclic and miscellaneous",
++    {  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0},
++    {  0,  21,  42,  64,  85, 106, 128, 149, 170, 192, 213, 234, 255},
++    {255, 244, 234, 223, 212, 202, 191, 180, 170, 159, 148, 138, 128}},
++  {"cool", "cool", "Cyclic and miscellaneous",
++    {  0,  21,  42,  64,  85, 106, 128, 149, 170, 192, 213, 234, 255},
++    {255, 234, 213, 191, 170, 149, 127, 106,  85,  63,  42,  21,   0},
++    {255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255}}
++};

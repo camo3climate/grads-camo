@@ -1,0 +1,42 @@
+Source: grads-camo
+Section: science
+Priority: optional
+Maintainer: CAMO packaging maintainers <noreply@example.invalid>
+Standards-Version: 4.7.2
+Rules-Requires-Root: no
+Build-Depends:
+ debhelper-compat (= 13),
+ dh-autoreconf,
+ pkgconf,
+ libreadline-dev | libeditreadline-dev,
+ libgeotiff-dev,
+ libg2c-dev,
+ libnetcdf-dev,
+ zlib1g-dev,
+ libudunits2-dev,
+ libhdf5-serial-dev | libhdf5-dev,
+ libx11-dev,
+ libxext-dev,
+ libxmu-headers,
+ libxrender-dev,
+ libgd-dev,
+ libshp-dev,
+ libhdf4-alt-dev | libhdf4-dev,
+ libaec-dev,
+ libcairo2-dev,
+ libfontconfig1-dev,
+ libfreetype-dev,
+ libpng-dev,
+ libjpeg-dev
+Homepage: https://github.com/camo3climate/grads-camo
+
+Package: grads-camo
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Provides: grads
+Conflicts: grads
+Replaces: grads
+Description: CAMO build of GrADS for earth science data
+ GrADS is an interactive analysis and visualization tool for gridded and
+ station earth-science data. This unofficial CAMO build uses GrADS 2.2.3,
+ current system libraries, and projection-aware geographic drawing commands.

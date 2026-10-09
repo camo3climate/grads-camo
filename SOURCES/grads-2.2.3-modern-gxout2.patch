@@ -1,0 +1,208 @@
+Description: add modern cividis theme defaults and gxout stream2/vector2
+Author: CAMO packaging maintainers
+Forwarded: no
+Last-Update: 2026-07-04
+
+diff -ruN grads-2.2.3/src/camo_colormap_impl.inc grads-2.2.3/src/camo_colormap_impl.inc
+--- grads-2.2.3/src/camo_colormap_impl.inc	2026-07-04 12:46:55
++++ grads-2.2.3/src/camo_colormap_impl.inc	2026-07-04 12:41:17
+@@ -169,6 +169,7 @@
+     gxsetllasp(1.2);
+     gxdbsethersh(0);
+     gxchdf(0);
++    pcm->rbflg = 0;
+     pcm->grflag = 1;
+     pcm->grstyl = 5;
+     pcm->grcolr = 15;
+@@ -194,7 +195,8 @@
+     pcm->mapthk = 2;
+     pcm->aaflg = 1;
+     gxsignal(3);
+-    gaprnt(2,"theme = modern\n");
++    gaset_rgbmap("cividis",pcm);
++    gaprnt(2,"theme = modern (cividis)\n");
+     return(0);
+   }
+   gaprnt(0,"SET THEME Error: valid themes are classic or modern\n");
+diff -ruN grads-2.2.3/src/gagx.c grads-2.2.3/src/gagx.c
+--- grads-2.2.3/src/gagx.c	2026-07-04 12:46:55
++++ grads-2.2.3/src/gagx.c	2026-07-04 12:47:41
+@@ -90,6 +90,19 @@
+ 
+ gaint rcols[13] = {9,14,4,11,5,13,3,10,7,12,8,2,6};
+ 
++static gaint gacamo_gxout2_outline_color (void) {
++  gaint bcol;
++
++  bcol = gxdbkq();
++  if (bcol==1) gxacol(2038,255,255,255,155);
++  else gxacol(2038,4,7,14,150);
++  return(2038);
++}
++
++static gaint gacamo_gxout2_outline_width (struct gacmn *pcm) {
++  return(pcm->cthick + 6);
++}
++
+ /* Figure out which graphics routine to call.  Use the first
+    grid hung off gacmn to determine whether we are doing
+    a 0-D, 1-D, or 2-D output.    */
+@@ -3078,6 +3091,16 @@
+   gxwide(pcm->cthick);
+   gxclip (pcm->xsiz1, pcm->xsiz2, pcm->ysiz1, pcm->ysiz2);
+ 
++  if (pcm->gxout2flg) {
++    gxcolr(gacamo_gxout2_outline_color());
++    gxwide(gacamo_gxout2_outline_width(pcm));
++    gxstrm (u,v,NULL,pgru->isiz,pgru->jsiz,umask,vmask,0,0,
++      pcm->shdlvs,pcm->shdcls,pcm->shdcnt,pcm->strmden,
++      pcm->strmarrd,pcm->strmarrsz, pcm->strmarrt);
++    gxcolr(lcol);
++    gxwide(pcm->cthick);
++  }
++
+   if (flag) {
+     gxstrm (u,v,c,pgru->isiz,pgru->jsiz,umask,vmask,cmask,flag,
+       pcm->shdlvs,pcm->shdcls,pcm->shdcnt,pcm->strmden,
+@@ -3103,7 +3126,7 @@
+ struct gagrid *pgru, *pgrv, *pgrc=NULL;
+ gadouble *u, *v, *c=0, x, y, lon, lat, umax, vmax;
+ gadouble vscal, adj, dir;
+-gaint i, j, flag, lcol, len, hemflg, hflg;
++gaint i, j, flag, lcol, len, hemflg, hflg, ipass, drawpasses, basecol;
+ char *umask,*vmask,*cmask=NULL;
+ 
+   if (pcm->numgrd<2) {
+@@ -3165,6 +3188,7 @@
+ 
+   if (pcm->ccolor>=0) lcol = pcm->ccolor;
+   else lcol=1;
++  basecol = lcol;
+   gxcolr (lcol);
+   gxstyl(1);
+   gxwide(pcm->cthick);
+@@ -3187,15 +3211,6 @@
+   }
+   pcm->arrflg = 1;
+ 
+-  u = pgru->grid;
+-  v = pgrv->grid;
+-  umask = pgru->umask;
+-  vmask = pgrv->umask;
+-  if (flag) {
+-    c = pgrc->grid;
+-    cmask = pgrc->umask;
+-  }
+-
+   /* hflg=0 idim is lat
+      hflg=1 jdim is lat
+      hflg=2 plot nhem
+@@ -3211,6 +3226,27 @@
+       else hflg = 2;
+     }
+   }
++
++  drawpasses = (pcm->gxout2flg && !brbflg) ? 2 : 1;
++  for (ipass=0; ipass<drawpasses; ipass++) {
++  u = pgru->grid;
++  v = pgrv->grid;
++  umask = pgru->umask;
++  vmask = pgrv->umask;
++  if (flag) {
++    c = pgrc->grid;
++    cmask = pgrc->umask;
++  }
++  if (drawpasses==2 && ipass==0) {
++    lcol = gacamo_gxout2_outline_color();
++    gxcolr(lcol);
++    gxwide(gacamo_gxout2_outline_width(pcm));
++  } else {
++    lcol = basecol;
++    gxcolr(lcol);
++    gxwide(pcm->cthick);
++  }
++
+   for (j=1; j<=pgru->jsiz; j++) {
+   for (i=1; i<=pgru->isiz; i++) {
+     if (*umask!=0 && *vmask!=0) {
+@@ -3225,7 +3261,7 @@
+       if (hflg==0 && lon<0.0) hemflg = 1;
+       if (hflg==1 && lat<0.0) hemflg = 1;
+       if (hflg==3) hemflg = 1;
+-      if (flag) {
++      if (flag && !(drawpasses==2 && ipass==0)) {
+         if (*cmask==0) gxcolr(15);
+         else {
+           lcol = gashdc(pcm,*c);
+@@ -3250,6 +3286,7 @@
+     u++; v++; umask++; vmask++;
+     if (flag) { c++; cmask++; }
+   }}
++  }
+ 
+   gxclip (0.0, pcm->xsiz, 0.0, pcm->ysiz);
+ 
+diff -ruN grads-2.2.3/src/gauser.c grads-2.2.3/src/gauser.c
+--- grads-2.2.3/src/gauser.c	2026-07-04 12:46:55
++++ grads-2.2.3/src/gauser.c	2026-07-04 12:42:19
+@@ -4414,6 +4414,7 @@
+     gaprnt(2,pout);
+     snprintf(pout,1255,"2D Graphic, 2 expr = %s\n",gxout2Db[pcm->gout2b]);
+     gaprnt(2,pout);
++    if (pcm->gxout2flg) gaprnt(2,"2D Graphic style = modern double-draw\n");
+     snprintf(pout,1255,"Station data = %s\n",gxoutStn[pcm->goutstn]);
+     gaprnt(2,pout);
+   }
+@@ -5041,7 +5042,9 @@
+     printf (" set gxout grfill     grid-cell color fill\n");
+     printf (" set gxout grid       print grid values\n");
+     printf (" set gxout vector     vector arrows\n");
++    printf (" set gxout vector2    vector arrows with modern double-draw outline\n");
+     printf (" set gxout stream     streamlines\n");
++    printf (" set gxout stream2    streamlines with modern double-draw outline\n");
+     printf (" set gxout barb       wind barbs\n");
+     printf (" set gxout line       line plot\n");
+     printf (" set gxout bar        bar plot\n");
+@@ -6838,6 +6841,7 @@
+     kwrd = 21;
+     if ((cmd = nxtwrd (cmd)) == NULL) goto err;
+     pcm->gout0 = 9;
++    pcm->gxout2flg = 0;
+     if      (cmpwrd("contour",cmd))  pcm->gout2a = 1;
+     else if (cmpwrd("shaded",cmd))   pcm->gout2a = 16;
+     else if (cmpwrd("shade1",cmd))   pcm->gout2a = 2;
+@@ -6845,10 +6849,12 @@
+     else if (cmpwrd("shade2b",cmd))  pcm->gout2a = 17;
+     else if (cmpwrd("grid",cmd))    {pcm->gout2a = 3; pcm->gout2b = 3;}
+     else if (cmpwrd("vector",cmd))  {pcm->gout2b = 4; pcm->goutstn = 6; pcm->gout1a = 1;}
++    else if (cmpwrd("vector2",cmd)) {pcm->gout2b = 4; pcm->goutstn = 6; pcm->gout1a = 1; pcm->gxout2flg = 1; pcm->cthick = 5;}
+     else if (cmpwrd("scatter",cmd))  pcm->gout2b = 5;
+     else if (cmpwrd("fgrid",cmd))    pcm->gout2a = 6;
+     else if (cmpwrd("fwrite",cmd))   pcm->gout2a = 7;
+     else if (cmpwrd("stream",cmd))   pcm->gout2b = 8;
++    else if (cmpwrd("stream2",cmd))  {pcm->gout2b = 8; pcm->gxout2flg = 1; pcm->cthick = 7; pcm->strmden = 3; pcm->strmarrd = 0.55; pcm->strmarrsz = 0.045; pcm->strmarrt = 1;}
+     else if (cmpwrd("grfill",cmd))   pcm->gout2a = 10;
+     else if (cmpwrd("geotiff",cmd)) {
+ #if GEOTIFF==1
+diff -ruN grads-2.2.3/src/grads.c grads-2.2.3/src/grads.c
+--- grads-2.2.3/src/grads.c	2026-07-04 12:46:55
++++ grads-2.2.3/src/grads.c	2026-07-04 12:40:25
+@@ -525,6 +525,7 @@
+   gcmn.strmarrd = 0.4;
+   gcmn.strmarrsz = 0.05;
+   gcmn.strmarrt = 1;
++  gcmn.gxout2flg = 0;
+   gcmn.frame = 1;
+   gcmn.pxsize = gcmn.xsiz;
+   gcmn.pysize = gcmn.ysiz;
+diff -ruN grads-2.2.3/src/grads.h grads-2.2.3/src/grads.h
+--- grads-2.2.3/src/grads.h	2026-07-04 12:46:55
++++ grads-2.2.3/src/grads.h	2026-07-04 12:40:04
+@@ -176,6 +176,7 @@
+   gadouble strmarrd;           /* Streamline distance between arrowheads */
+   gadouble strmarrsz;          /* Streamline arrowhead size */
+   gaint strmarrt;              /* Streamline arrowhead type */
++  gaint gxout2flg;             /* Modern double-draw vector/stream mode */
+   gaint mdlblnk,mdldig3;       /* Station model plot opts */
+   char *prstr;                 /* Format string for gxout print */
+   gaint prlnum;                /* Number of values per record */

@@ -1,0 +1,17 @@
+grads-2.2.3-camo26.1 buildkit
+Generated: 2026-07-17
+buildkit-sha256: e3ac406327376090fc0157b90ec8b76fc140124c3a0d55411e0e4bacc74a853c
+themes-rgbmap-patch-sha256: 0da372332f6425c1b1462f399b13c0384a410b0241525363a84cffb3b6fc15d1
+camo-config-patch-sha256: 9630a3302d45eeb495dd217ab74f032e80824ae649242b4131f781b13738db21
+geo-commands-patch-sha256: 3a50a9e2b2e6d8fb0bd0a9f44fcf210b258b04d12a9035a135a9e7ba4d4e0994
+udunits2-include-patch-sha256: b4f2e04679db0375716c0991435ee9794f337333b33a6c6b35a49da94d1b8f22
+hdf5-serial-ldflags-patch-sha256: b15c47d681a7ad6b72ddc374751c60965da9b880d9574fb58041713d0b790ab4
+hdf5-modern-api-patch-sha256: cd154e0f08018a04ee9058d6e882623c84b6e965119cec98f61697e7da85eb55
+grib2-g2c-portable-patch-sha256: 4d3e149c563b51ed2d8b4556f8bc7ed9420c17087865f4fa59baa7c76061c05b
+txtwrite-patch-sha256: c72552baf440590f59fbd16ce820a235c18f5205545294391199e2d5e4e9b9aa
+modern-gxout2-patch-sha256: 391a7e44e27c5452e300e614255002201ffe883ccb66dad074c00e4f01869fd3
+re-limited-patch-sha256: 58f1da92f77218ddd316d482bcf6f6e7ca66a8ff024d621572c0c79ff9f62c80
+axis-label-size-patch-sha256: 98e3cfdb9ba96d673a2a9496c550c8b91f07a74ee345f318d278f64ff7dac1ef
+modern-startup-defaults-patch-sha256: 13e27260d37cfddf0471ca2624d74c7291b0a79b468d0e6ec4631495797f33eb
+note: RPM build scripts print the actual geo-commands patch hash before rpmbuild.
+note: buildkit-sha256 is finalized in the repository copy after the tarball is generated.

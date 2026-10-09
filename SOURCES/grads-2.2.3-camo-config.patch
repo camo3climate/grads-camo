@@ -1,0 +1,37 @@
+Description: add CAMO build identity to GrADS configuration output
+Author: CAMO packaging maintainers
+Forwarded: no
+Last-Update: 2026-07-06
+
+--- a/src/gacfg.c
++++ b/src/gacfg.c
+@@ -29,6 +29,11 @@
+ #include <string.h>
+ #include "buildinfo.h"
+ 
++/* RPM/MacPorts packaging defines this from the central CAMO release setting. */
++#ifndef CAMO_VERSION
++#define CAMO_VERSION "development"
++#endif
++
+ #if GRIB2==1
+ #include "grib2.h"
+ #endif
+@@ -79,7 +84,7 @@
+ if (dsubs==NULL) dsubs = getdsubs();  /* get ptrs to the graphics display functions */
+ if (psubs==NULL) psubs = getpsubs();  /* get ptrs to the graphics printing functions */
+ 
+-snprintf(cmd,255,"Config: v%s",GRADS_VERSION);
++snprintf(cmd,255,"Config: v%s CAMO build %s",GRADS_VERSION,CAMO_VERSION);
+ #if BYTEORDER==1
+  strcat(cmd," big-endian");
+ #else
+@@ -124,6 +129,8 @@
+  }
+  
+  gaprnt (verbose, "Grid Analysis and Display System (GrADS) Version " GRADS_VERSION "\n");
++ snprintf(cmd,255,"Unofficial CAMO build %s (not an official upstream release)\n",CAMO_VERSION);
++ gaprnt (verbose, cmd);
+  gaprnt (verbose, "Copyright (C) 1988-2022 by George Mason University \n");
+  gaprnt (verbose, "GrADS comes with ABSOLUTELY NO WARRANTY \n");
+  gaprnt (verbose, "See file COPYRIGHT for more information \n\n");
